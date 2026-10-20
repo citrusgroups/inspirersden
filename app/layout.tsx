@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./dashboard-pro.css";
+import "./public-pro.css";
 export const metadata: Metadata = {
   title: {
     default: "Inspirers’ Den | Influencer Marketing & PR",
