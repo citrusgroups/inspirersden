@@ -71,7 +71,7 @@ import {
   Trash2,
   Bot,
 } from "lucide-react";
-import type { State, Entry, Data, Member, Field } from "@/lib/types";
+import type { State, Entry, Data, Member, Field, FileInfo } from "@/lib/types";
 import {
   navigation,
   slugs,
@@ -216,11 +216,13 @@ function Modal({
   children,
   onClose,
   wide = false,
+  variant = "default",
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
   wide?: boolean;
+  variant?: "default" | "form" | "detail" | "danger";
 }) {
   return (
     <Dialog
@@ -232,7 +234,7 @@ function Modal({
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className={"agency-dialog " + (wide ? "wide" : "")}
+        className={`agency-dialog ${wide ? "wide" : ""} ${variant}`}
       >
         <header>
           <DialogTitle>{title}</DialogTitle>
@@ -359,6 +361,10 @@ export default function Dashboard() {
     ),
     [selected, setSelected] = useState<Entry | null>(null),
     [deleteTarget, setDeleteTarget] = useState<Entry | null>(null),
+    [fileDeleteTarget, setFileDeleteTarget] = useState<{
+      file: FileInfo;
+      record: Entry;
+    } | null>(null),
     [invite, setInvite] = useState<Entry | boolean | null>(null),
     [notification, setNotification] = useState(false),
     [profile, setProfile] = useState(false),
@@ -1808,17 +1814,31 @@ export default function Dashboard() {
                     {state.files
                       .filter((f) => f.record_id === e.id)
                       .map((f) => (
-                        <a
-                          className="attachment-link"
-                          href={"/api/file/" + f.id}
-                          target="_blank"
-                          rel="noreferrer"
+                        <div
+                          className="attachment-link media-file-row"
                           key={f.id}
                         >
-                          <FileText size={14} />
-                          {f.name}
-                          <small>{Math.round(f.size / 1024)} KB</small>
-                        </a>
+                          <a
+                            href={"/api/file/" + f.id}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <FileText size={14} />
+                            {f.name}
+                            <small>{Math.round(f.size / 1024)} KB</small>
+                          </a>
+                          {writable(e) && (
+                            <button
+                              className="icon-button delete-file-button"
+                              aria-label={"Delete " + f.name}
+                              onClick={() =>
+                                setFileDeleteTarget({ file: f, record: e })
+                              }
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
                       ))}
                   </article>
                 ))}
@@ -2341,6 +2361,7 @@ export default function Dashboard() {
         <Modal
           title={(editing.entry ? "Edit " : "New ") + editing.kind}
           wide
+          variant="form"
           onClose={() => setEditing(null)}
         >
           <EntryForm
@@ -2356,8 +2377,14 @@ export default function Dashboard() {
       )}
       {selected && (
         <Modal
-          title={val(selected, "name")}
+          title={
+            (selected.kind === "lead"
+              ? "Inquiry"
+              : selected.kind.charAt(0).toUpperCase() +
+                selected.kind.slice(1)) + " details"
+          }
           wide
+          variant="detail"
           onClose={() => setSelected(null)}
         >
           <div className="detail-heading">
@@ -2383,13 +2410,16 @@ export default function Dashboard() {
                   Edit profile
                 </button>
               )}
-              {selected.kind === "influencer" && isAdmin && (
+              {isAdmin && (
                 <button
-                  className="btn outline small"
-                  onClick={() => setDeleteTarget(selected)}
+                  className="btn danger-outline small"
+                  onClick={() => {
+                    setDeleteTarget(selected);
+                    setSelected(null);
+                  }}
                 >
                   <Trash2 size={15} />
-                  Delete influencer
+                  Delete {selected.kind === "lead" ? "inquiry" : selected.kind}
                 </button>
               )}
               {selected.kind === "influencer" && writable(selected) && (
@@ -2565,13 +2595,27 @@ export default function Dashboard() {
                   >
                     {f.name}
                   </a>
-                  <a
-                    className="icon-button"
-                    aria-label={"Download " + f.name}
-                    href={"/api/file/" + f.id + "?download=1"}
-                  >
-                    <Download size={16} />
-                  </a>
+                  <div className="attachment-actions">
+                    <a
+                      className="icon-button"
+                      aria-label={"Download " + f.name}
+                      href={"/api/file/" + f.id + "?download=1"}
+                    >
+                      <Download size={16} />
+                    </a>
+                    {writable(selected) && (
+                      <button
+                        className="icon-button delete-file-button"
+                        aria-label={"Delete " + f.name}
+                        onClick={() => {
+                          setFileDeleteTarget({ file: f, record: selected });
+                          setSelected(null);
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             {writable(selected) && (
@@ -2594,10 +2638,12 @@ export default function Dashboard() {
       {deleteTarget && (
         <Modal
           title={"Delete " + deleteTarget.data.name}
+          variant="danger"
           onClose={() => setDeleteTarget(null)}
         >
-          <DeleteInfluencer
+          <DeleteRecord
             entry={deleteTarget}
+            onCancel={() => setDeleteTarget(null)}
             onDelete={async () => {
               const result = await api(
                 "records/" + deleteTarget.id + "/delete",
@@ -2611,9 +2657,27 @@ export default function Dashboard() {
               setSelected(null);
               notify(
                 result.storageCleanupPending
-                  ? "Profile deleted. Some private file cleanup needs attention."
-                  : "Influencer deleted.",
+                  ? "Record deleted. Some private file cleanup is still pending."
+                  : `${deleteTarget.kind === "lead" ? "Inquiry" : deleteTarget.kind.charAt(0).toUpperCase() + deleteTarget.kind.slice(1)} deleted permanently.`,
               );
+            }}
+          />
+        </Modal>
+      )}
+      {fileDeleteTarget && (
+        <Modal
+          title="Delete uploaded file"
+          variant="danger"
+          onClose={() => setFileDeleteTarget(null)}
+        >
+          <DeleteFile
+            file={fileDeleteTarget.file}
+            onCancel={() => setFileDeleteTarget(null)}
+            onDelete={async () => {
+              await api(`file/${fileDeleteTarget.file.id}/delete`, {});
+              await load();
+              setFileDeleteTarget(null);
+              notify("File deleted permanently.");
             }}
           />
         </Modal>
@@ -2647,18 +2711,21 @@ export default function Dashboard() {
     </SidebarProvider>
   );
 }
-function DeleteInfluencer({
+function DeleteRecord({
   entry,
   onDelete,
+  onCancel,
 }: {
   entry: Entry;
   onDelete: () => Promise<void>;
+  onCancel: () => void;
 }) {
   const [name, setName] = useState(""),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   return (
     <form
+      className="delete-confirm"
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -2672,10 +2739,17 @@ function DeleteInfluencer({
         }
       }}
     >
+      <div className="delete-warning-icon">
+        <Trash2 size={22} />
+      </div>
+      <h3>
+        Delete this {entry.kind === "lead" ? "inquiry" : entry.kind}{" "}
+        permanently?
+      </h3>
       <p>
-        This deletes the profile, tracked clicks, connections and private
-        uploads. Linked leads and campaigns stay, but their creator link is
-        removed. The creator’s portal account is deactivated.
+        {entry.kind === "influencer"
+          ? "The profile, tracking data, account connections and private uploads will be removed. Linked records will remain without this creator."
+          : "This record and its private uploads will be removed permanently. This action cannot be undone."}
       </p>
       <label>
         Type <strong>{entry.data.name}</strong> to confirm
@@ -2690,14 +2764,75 @@ function DeleteInfluencer({
           {message}
         </p>
       )}
-      <button
-        className="btn charcoal"
-        disabled={busy || name !== String(entry.data.name)}
-      >
-        <Trash2 size={15} />
-        {busy ? "Deleting…" : "Delete influencer permanently"}
-      </button>
+      <div className="delete-confirm-actions">
+        <button
+          type="button"
+          className="btn outline"
+          onClick={onCancel}
+          disabled={busy}
+        >
+          Cancel
+        </button>
+        <button
+          className="btn danger"
+          disabled={busy || name !== String(entry.data.name)}
+        >
+          <Trash2 size={15} />
+          {busy ? "Deleting…" : "Delete permanently"}
+        </button>
+      </div>
     </form>
+  );
+}
+function DeleteFile({
+  file,
+  onDelete,
+  onCancel,
+}: {
+  file: FileInfo;
+  onDelete: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  return (
+    <div className="delete-confirm">
+      <div className="delete-warning-icon">
+        <Trash2 size={22} />
+      </div>
+      <h3>Delete “{file.name}”?</h3>
+      <p>
+        The file will be removed from the record and private storage. This
+        action cannot be undone.
+      </p>
+      {message && (
+        <p className="form-message error" role="alert">
+          {message}
+        </p>
+      )}
+      <div className="delete-confirm-actions">
+        <button className="btn outline" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+        <button
+          className="btn danger"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setMessage("");
+            try {
+              await onDelete();
+            } catch (error) {
+              setMessage((error as Error).message);
+              setBusy(false);
+            }
+          }}
+        >
+          <Trash2 size={15} />
+          {busy ? "Deleting…" : "Delete file"}
+        </button>
+      </div>
+    </div>
   );
 }
 function Qr({ url }: { url: string }) {

@@ -436,7 +436,10 @@ async function handle(request: Request) {
       if (path[1] && path[2] === "delete") {
         if (read) fail("Method not allowed", 405);
         if (!admin(user))
-          fail("Only an agency owner or admin can delete an influencer.", 403);
+          fail(
+            "Only an agency owner or admin can permanently delete records.",
+            403,
+          );
         const confirmation = z
           .object({ confirm: z.string(), version: z.number().int().positive() })
           .parse((await request.json()) as JsonObject);
@@ -445,13 +448,59 @@ async function handle(request: Request) {
             .prepare("SELECT * FROM records WHERE id=? FOR UPDATE")
             .bind(path[1])
             .first<Entry>();
-          if (!raw || raw.kind !== "influencer")
-            fail("Influencer not found.", 404);
+          if (!raw) fail("Record not found.", 404);
           const creator = unpack(raw);
           if (creator.version !== confirmation.version)
-            fail("This profile changed. Reload before deleting.", 409);
+            fail("This record changed. Reload before deleting.", 409);
           if (String(creator.data.name) !== confirmation.confirm)
-            fail("Type the exact influencer name to confirm deletion.");
+            fail("Type the exact record name to confirm deletion.");
+          const files = (
+            await tx
+              .prepare("SELECT id FROM files WHERE record_id=?")
+              .bind(creator.id)
+              .all<{ id: string }>()
+          ).results;
+          if (creator.kind !== "influencer") {
+            if (creator.kind === "lead")
+              await tx
+                .prepare(
+                  "UPDATE agent_conversations SET lead_id=NULL WHERE lead_id=?",
+                )
+                .bind(creator.id)
+                .run();
+            if (creator.kind === "package")
+              await tx
+                .prepare(
+                  "UPDATE agent_actions SET status='rejected',decided=?,decided_by=? WHERE status='pending' AND payload LIKE ?",
+                )
+                .bind(now(), user.email, '%"packageId":"' + creator.id + '"%')
+                .run();
+            await tx
+              .prepare("DELETE FROM files WHERE record_id=?")
+              .bind(creator.id)
+              .run();
+            await tx
+              .prepare("DELETE FROM versions WHERE record_id=?")
+              .bind(creator.id)
+              .run();
+            await tx
+              .prepare("DELETE FROM records WHERE id=?")
+              .bind(creator.id)
+              .run();
+            await tx
+              .prepare(
+                "INSERT INTO audit (id,actor,action,record_id,created) VALUES (?,?,?,?,?)",
+              )
+              .bind(
+                id(),
+                user.email,
+                "Deleted " + creator.kind + ": " + creator.data.name,
+                creator.id,
+                now(),
+              )
+              .run();
+            return { keys: files.map((f) => f.id), kind: creator.kind };
+          }
           const active = await tx
             .prepare(
               "SELECT id FROM connections WHERE influencer_id=? AND status='Connected' LIMIT 1",
@@ -463,12 +512,6 @@ async function handle(request: Request) {
               "Disconnect the creator’s social accounts before deleting the profile.",
               409,
             );
-          const files = (
-            await tx
-              .prepare("SELECT id FROM files WHERE record_id=?")
-              .bind(creator.id)
-              .all<{ id: string }>()
-          ).results;
           const related = (
             await tx
               .prepare(
@@ -531,10 +574,10 @@ async function handle(request: Request) {
               now(),
             )
             .run();
-          return files.map((f) => f.id);
+          return { keys: files.map((f) => f.id), kind: creator.kind };
         });
         const cleanup = await Promise.allSettled(
-          removed.map((key) => bucket().delete(key)),
+          removed.keys.map((key) => bucket().delete(key)),
         );
         const pending = cleanup.filter(
           (result) => result.status === "rejected",
@@ -543,9 +586,13 @@ async function handle(request: Request) {
           console.error(
             "Storage cleanup pending for",
             pending,
-            "deleted influencer files",
+            "deleted record files",
           );
-        return ok({ success: true, storageCleanupPending: pending });
+        return ok({
+          success: true,
+          kind: removed.kind,
+          storageCleanupPending: pending,
+        });
       }
 
       if (read) fail("Use dashboard state to read records.", 405);
@@ -932,6 +979,46 @@ async function handle(request: Request) {
         id: fileId,
         ...(isLogo ? { logo: "/api/branding/file/" + fileId } : {}),
       });
+    }
+    if (action === "file" && !read && path[1] && path[2] === "delete") {
+      const meta = await db()
+        .prepare("SELECT * FROM files WHERE id=?")
+        .bind(path[1])
+        .first<{ id: string; record_id: string; name: string; mime: string }>();
+      const entry = meta ? await getRecord(meta.record_id) : null;
+      if (!meta || !entry) fail("File not found", 404);
+      if (!canWrite(user, entry))
+        fail("You do not have permission to delete this file.", 403);
+      await db().transaction(async (tx) => {
+        if (String(entry.data.image || "") === "/api/file/" + meta.id) {
+          const data = { ...entry.data, image: "" };
+          await tx
+            .prepare(
+              "UPDATE records SET data=?,updated=?,version=version+1 WHERE id=?",
+            )
+            .bind(JSON.stringify(data), now(), entry.id)
+            .run();
+        }
+        await tx.prepare("DELETE FROM files WHERE id=?").bind(meta.id).run();
+        await tx
+          .prepare(
+            "INSERT INTO audit (id,actor,action,record_id,created) VALUES (?,?,?,?,?)",
+          )
+          .bind(id(), user.email, "Deleted file: " + meta.name, entry.id, now())
+          .run();
+      });
+      let storageCleanupPending = false;
+      try {
+        await bucket().delete(meta.id);
+      } catch (error) {
+        storageCleanupPending = true;
+        console.error(
+          "Storage cleanup pending for deleted file",
+          meta.id,
+          error,
+        );
+      }
+      return ok({ success: true, storageCleanupPending });
     }
     if (action === "file" && read) {
       const meta = await db()
