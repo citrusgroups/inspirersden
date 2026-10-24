@@ -4,6 +4,7 @@
 /* Auth and dispatch-owned logout need a full document navigation to refresh HTTP-only sessions. */
 /* eslint-disable @next/next/no-location-assign-relative-destination */
 import { readJson, type JsonObject } from "@/lib/json";
+import AgentInbox from "@/components/agent-inbox";
 import {
   useState,
   useEffect,
@@ -444,6 +445,7 @@ export default function Dashboard() {
   const campaigns =
     state?.records.filter((r) => r.kind === "campaign" && inRange(r.created)) ||
     [];
+  const packages = state?.records.filter((r) => r.kind === "package") || [];
   const clicks = state?.clicks.filter((c) => inRange(c.created)) || [];
   const kind: Record<string, string> = {
     influencers: "influencer",
@@ -682,6 +684,7 @@ export default function Dashboard() {
     overview: "A clear view of your creators, collaborations and next steps.",
     influencers: "The voices that make your network.",
     leads: "Every conversation, from first hello to confirmed collaboration.",
+    "agent-inbox": "Review AI conversations, approvals and human handoffs.",
     social: "Manage agency and creator account access securely.",
     packages: "Clear deliverables. Consistent offers.",
     campaigns: "Bring every collaboration together.",
@@ -1690,6 +1693,14 @@ export default function Dashboard() {
                 </div>
               )}
             </section>
+          )}
+          {section === "agent-inbox" && (
+            <AgentInbox
+              influencers={creators}
+              packages={packages}
+              isAdmin={isAdmin}
+              isStaff={isStaff}
+            />
           )}
           {section === "social" && (
             <>
@@ -3137,7 +3148,10 @@ function UploadForm({ entry, onDone }: { entry: Entry; onDone: () => void }) {
         <label>
           Use this file as
           <Choice name="purpose">
-            <option value="attachment">Media kit / attachment</option>
+            <option value="media-kit">
+              Active media kit (agent can share)
+            </option>
+            <option value="attachment">General attachment</option>
             <option value="avatar">Profile photo (image only)</option>
           </Choice>
         </label>

@@ -471,7 +471,7 @@ async function handle(request: Request) {
             if (creator.kind === "package")
               await tx
                 .prepare(
-                  "UPDATE agent_actions SET status='rejected',decided=?,decided_by=? WHERE status='pending' AND payload LIKE ?",
+                  "UPDATE agent_actions SET status='rejected',decided=?,decided_by=? WHERE status IN ('pending','approved') AND payload LIKE ?",
                 )
                 .bind(now(), user.email, '%"packageId":"' + creator.id + '"%')
                 .run();
@@ -887,9 +887,9 @@ async function handle(request: Request) {
       if (read) fail("Method not allowed", 405);
       const form = await request.formData();
       const recordId = String(form.get("recordId") || "");
+      const purpose = String(form.get("purpose") || "attachment");
       const entry = await getRecord(recordId);
-      const isLogo =
-        recordId === "agency" && form.get("purpose") === "logo" && admin(user);
+      const isLogo = recordId === "agency" && purpose === "logo" && admin(user);
       if (!isLogo && (!entry || !canWrite(user, entry)))
         fail("Upload not permitted", 403);
       const file = form.get("file");
@@ -907,10 +907,7 @@ async function handle(request: Request) {
       ];
       if (!allowed.includes(file.type))
         fail("Only PDF, JPEG, PNG and WebP files are accepted.");
-      if (
-        (isLogo || form.get("purpose") === "avatar") &&
-        !file.type.startsWith("image/")
-      )
+      if ((isLogo || purpose === "avatar") && !file.type.startsWith("image/"))
         fail("Select an image for the logo or profile photo.");
       const bytes = new Uint8Array(await file.arrayBuffer());
       const signature = Array.from(bytes.slice(0, 12));
@@ -957,12 +954,22 @@ async function handle(request: Request) {
             )
             .run();
         }
-        if (
-          entry &&
-          form.get("purpose") === "avatar" &&
-          file.type.startsWith("image/")
-        ) {
+        if (entry && purpose === "avatar" && file.type.startsWith("image/")) {
           const data = { ...entry.data, image: "/api/file/" + fileId };
+          await db()
+            .prepare(
+              "UPDATE records SET data=?,updated=?,version=version+1 WHERE id=?",
+            )
+            .bind(JSON.stringify(data), now(), recordId)
+            .run();
+        }
+        if (entry?.kind === "influencer" && purpose === "media-kit") {
+          const data = {
+            ...entry.data,
+            kit: "/api/file/" + fileId,
+            kitFileId: fileId,
+            kitName: file.name.slice(0, 200),
+          };
           await db()
             .prepare(
               "UPDATE records SET data=?,updated=?,version=version+1 WHERE id=?",
@@ -990,8 +997,18 @@ async function handle(request: Request) {
       if (!canWrite(user, entry))
         fail("You do not have permission to delete this file.", 403);
       await db().transaction(async (tx) => {
-        if (String(entry.data.image || "") === "/api/file/" + meta.id) {
-          const data = { ...entry.data, image: "" };
+        if (
+          String(entry.data.image || "") === "/api/file/" + meta.id ||
+          String(entry.data.kitFileId || "") === meta.id
+        ) {
+          const data = { ...entry.data };
+          if (String(data.image || "") === "/api/file/" + meta.id)
+            data.image = "";
+          if (String(data.kitFileId || "") === meta.id) {
+            data.kit = "";
+            data.kitFileId = "";
+            data.kitName = "";
+          }
           await tx
             .prepare(
               "UPDATE records SET data=?,updated=?,version=version+1 WHERE id=?",

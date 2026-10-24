@@ -818,8 +818,48 @@
 }
 
 /* Agent Inbox: conversation list, live chat and lead context */
+.agent-workspace {
+  display: grid;
+  gap: 12px;
+}
+.agent-readiness {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--pro-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(20, 20, 22, 0.035);
+}
+.agent-readiness > span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 760;
+  letter-spacing: 0.02em;
+}
+.agent-readiness > span.ready {
+  color: #237049;
+  background: #eaf8f0;
+}
+.agent-readiness > span.draft {
+  color: #785c1f;
+  background: #fff6dc;
+}
+.agent-readiness > span.setup {
+  color: #8d4c33;
+  background: #fff0e9;
+}
+.agent-readiness > strong {
+  margin-left: auto;
+  color: #77777c;
+  font-size: 10px;
+}
 .agent-shell {
-  height: calc(100dvh - 190px);
+  height: calc(100dvh - 250px);
   min-height: 590px;
   display: grid !important;
   grid-template-columns: 290px minmax(420px, 1fr) 245px !important;
@@ -887,6 +927,12 @@
   border-bottom: 1px solid var(--pro-line) !important;
   background: #fff !important;
 }
+.agent-chat > header > div:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
 .agent-chat > header h2 {
   font-size: 15px !important;
 }
@@ -929,6 +975,23 @@
 .agent-message time {
   color: #99999d !important;
   font-size: 8px !important;
+}
+.agent-send-draft {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 6px 9px;
+  border: 1px solid #d6bc7d;
+  border-radius: 8px;
+  color: #6f5318;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 760;
+}
+.agent-send-draft:hover:not(:disabled) {
+  border-color: #b68b31;
+  background: #fff9ea;
 }
 .agent-approval {
   margin: 0 18px 12px !important;

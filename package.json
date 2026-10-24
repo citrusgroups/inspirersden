@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/postgres.mjs && node tests/agent.mjs",
+    "test": "node tests/postgres.mjs && node tests/agent.mjs && node tests/workflow.mjs",
     "db:setup": "node --env-file=.env.local scripts/setup.mjs",
     "db:migrate-local": "node --env-file=.env.local scripts/migrate-local.mjs"
   },

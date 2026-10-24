@@ -153,6 +153,14 @@ const files = {
       .remove([keyPath(key)]);
     if (error) throw error;
   },
+  async signedUrl(key: string, expiresIn = 3600) {
+    const { data, error } = await storage()
+      .storage.from(storageBucket())
+      .createSignedUrl(keyPath(key), expiresIn, { download: false });
+    if (error || !data?.signedUrl)
+      throw error || new Error("Unable to create a secure file link");
+    return data.signedUrl;
+  },
 };
 export function fileStore() {
   return files;

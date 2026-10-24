@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 /* Provider webhook JSON is intentionally parsed defensively. */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { cleanMessage } from "./agent-utils.mjs";
-import { config, fail } from "./server";
+import { config, db, fail } from "./server";
+import { decrypt } from "./oauth";
 
 export type InboundMessage = {
   provider: "whatsapp" | "instagram";
@@ -133,4 +134,27 @@ export async function sendChannelMessage(
     { recipient: { id: recipient }, message: { text: cleanMessage(text) } },
   );
   return result.message_id || "";
+}
+
+export async function channelOptionsFor(
+  channel: string,
+  influencerId: string | null,
+) {
+  if (channel !== "instagram") return {};
+  const targets = influencerId ? [influencerId, "agency"] : ["agency"];
+  for (const target of targets) {
+    const row = await db()
+      .prepare(
+        "SELECT external_account_id,token FROM connections WHERE influencer_id=? AND platform='Instagram' AND status='Connected'",
+      )
+      .bind(target)
+      .first<{ external_account_id: string; token: string }>();
+    if (!row?.token) continue;
+    const tokens = await decrypt(row.token);
+    return {
+      token: String(tokens.access_token || ""),
+      accountId: row.external_account_id,
+    };
+  }
+  return {};
 }

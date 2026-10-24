@@ -74,6 +74,10 @@ Run `npm run db:setup` again after updating an existing installation. This adds 
 
 Set `AI_GATEWAY_API_KEY` and `AI_MODEL`. Keep `AGENT_AUTO_REPLY=false` for initial testing: replies will be saved as drafts in **Dashboard → Agent Inbox**. Change it to `true` only after both provider send tests work. The agent matches the sender's language, uses the influencer's niche to set its voice, collects brand/contact/social/campaign/budget details and sends risky or negotiated conversations to a human.
 
+When draft mode is active, every AI reply shows **Approve & send** in Agent Inbox. Package suggestions require a separate Owner/Admin approval. After approval, the selected package is attached to the lead and its pipeline stage becomes **Package Suggested**. Staff can later mark the deal **Confirmed** or close it; the linked lead updates automatically. If the AI service is temporarily unavailable, a deterministic safe intake fallback continues collecting basic details instead of dropping the inquiry.
+
+For a presentation before Meta credentials are available, use **Agent Inbox → Create test inquiry**. It creates an internal demo conversation and lead but never sends a message to a real client.
+
 For WhatsApp set `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` and `WHATSAPP_APP_SECRET`. Register `<APP_URL>/api/webhooks/whatsapp` as the callback. The existing tracked creator link adds `Reference: INF-...`; the backend reads that reference and assigns the conversation to the correct influencer.
 
 For Instagram set `INSTAGRAM_VERIFY_TOKEN`. Register `<APP_URL>/api/webhooks/instagram` and subscribe the approved professional accounts to messaging events. Agency fallback sending can use `INSTAGRAM_ACCESS_TOKEN` and `INSTAGRAM_BUSINESS_ACCOUNT_ID`; connected influencer accounts use their encrypted OAuth token and external account ID. Meta app review, required messaging permissions, a public HTTPS callback and provider policy compliance are required before public accounts can use live messaging.
@@ -92,6 +96,7 @@ Agency and influencer connections are stored separately. Managers can view agenc
 Set `META_APP_ID`, `META_APP_SECRET`, and `META_GRAPH_VERSION` to a supported version such as the version selected in your Meta application dashboard. No version is guessed in code.
 
 Register:
+
 - `APP_URL/api/oauth/instagram/callback`
 - `APP_URL/api/oauth/facebook/callback`
 
@@ -123,5 +128,4 @@ Documentation: https://developers.google.com/identity/protocols/oauth2/web-serve
 - Calendar view is a date-sorted campaign agenda. A month-grid scheduler and recurring sync are not included.
 - Testimonials and agency campaign case studies remain editable content placeholders until approved material is supplied.
 - Package recommendations are never sent without an Agency Owner/Admin approval in Agent Inbox.
-
-"# inspirersden" 
+- A file uploaded as **Active media kit** is stored privately and shared by the agent through a one-hour signed link. General attachments are never shared automatically.
