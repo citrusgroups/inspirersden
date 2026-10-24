@@ -11,12 +11,14 @@ import {
   CheckCircle2,
   Archive,
   FlaskConical,
+  Trash2,
 } from "lucide-react";
 import { readJson } from "@/lib/json";
 
 type Conversation = {
   id: string;
   channel: string;
+  external_thread_id: string;
   external_user_id: string;
   influencer_id: string | null;
   lead_id: string | null;
@@ -54,6 +56,62 @@ type Configuration = {
   instagram: boolean;
   autoReply: boolean;
 };
+
+function parsedSocialLinks(value: string) {
+  try {
+    return (JSON.parse(value || "[]") as string[]).join(", ") || "Not collected";
+  } catch {
+    return "Not collected";
+  }
+}
+
+function LeadSnapshot({
+  active,
+  creatorName,
+}: {
+  active?: Conversation;
+  creatorName: string;
+}) {
+  if (!active) return <p>No conversation selected.</p>;
+  return (
+    <div className="agent-details-content">
+      <label>
+        Creator<strong>{creatorName}</strong>
+      </label>
+      <label>
+        Lead record<strong>{active.lead_id || "Creating…"}</strong>
+      </label>
+      <label>
+        Channel<strong>{active.channel}</strong>
+      </label>
+      <label>
+        Agent status<strong>{active.status}</strong>
+      </label>
+      <label>
+        Deal stage<strong>{active.stage}</strong>
+      </label>
+      <label>
+        Email<strong>{active.email || "Not collected"}</strong>
+      </label>
+      <label>
+        Phone<strong>{active.phone || "Not collected"}</strong>
+      </label>
+      <label>
+        Social links<strong>{parsedSocialLinks(active.social_links)}</strong>
+      </label>
+      <label>
+        Requirement<p>{active.requirement || "Not collected"}</p>
+      </label>
+      <label>
+        Budget<strong>{active.budget || "Not collected"}</strong>
+      </label>
+      <label>
+        Summary
+        <p>{active.summary || "The agent is still collecting details."}</p>
+      </label>
+    </div>
+  );
+}
 async function request<T>(url: string, body?: unknown): Promise<T> {
   const r = await fetch(
     url,
@@ -88,13 +146,15 @@ export default function AgentInbox({
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [deleteOpen, setDeleteOpen] = useState(false),
     [configuration, setConfiguration] = useState<Configuration>({
       ai: false,
       whatsapp: false,
       instagram: false,
       autoReply: false,
     });
-  const messageEnd = useRef<HTMLDivElement>(null);
+  const messageList = useRef<HTMLDivElement>(null);
+  const deleteCancel = useRef<HTMLButtonElement>(null);
   const list = useCallback(async () => {
     try {
       const data = await request<{
@@ -103,7 +163,11 @@ export default function AgentInbox({
       }>("/api/agent");
       setRows(data.conversations);
       setConfiguration(data.configuration);
-      setSelected((current) => current || data.conversations[0]?.id || "");
+      setSelected((current) =>
+        data.conversations.some((conversation) => conversation.id === current)
+          ? current
+          : data.conversations[0]?.id || "",
+      );
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -133,13 +197,26 @@ export default function AgentInbox({
     return () => clearInterval(timer);
   }, [selected, detail]);
   useEffect(() => {
-    messageEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const listElement = messageList.current;
+    if (!listElement) return;
+    listElement.scrollTo({ top: listElement.scrollHeight, behavior: "smooth" });
   }, [messages]);
-  const active = rows.find((r) => r.id === selected);
+  useEffect(() => {
+    if (!deleteOpen) return;
+    deleteCancel.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDeleteOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [deleteOpen]);
   const creator = (creatorId: string | null) =>
     influencers.find((i) => i.id === creatorId)?.data.name ||
     creatorId ||
     "Agency";
+  const active = rows.find((r) => r.id === selected);
+  const activeCreator = String(creator(active?.influencer_id || null));
+  const isTestInquiry = Boolean(active?.external_thread_id?.startsWith("demo-"));
   async function act(action: string, extra: Record<string, string> = {}) {
     if (!selected) return;
     setBusy(true);
@@ -168,6 +245,26 @@ export default function AgentInbox({
       await list();
       setSelected(result.conversationId);
       await detail(result.conversationId);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeTestInquiry() {
+    if (!selected || !isTestInquiry) return;
+    setBusy(true);
+    setError("");
+    try {
+      await request("/api/agent", {
+        conversationId: selected,
+        action: "delete",
+      });
+      setDeleteOpen(false);
+      setSelected("");
+      setMessages([]);
+      setActions([]);
+      await list();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -221,7 +318,12 @@ export default function AgentInbox({
                   {String(creator(c.influencer_id))} · {c.channel}
                 </small>
               </span>
-              <em>{c.status}</em>
+              <span className="agent-list-meta">
+                <em>{c.status}</em>
+                {c.external_thread_id?.startsWith("demo-") && (
+                  <i className="agent-test-label">Test</i>
+                )}
+              </span>
             </button>
           ))}
           {!rows.length && (
@@ -235,7 +337,7 @@ export default function AgentInbox({
           {active ? (
             <>
               <header>
-                <div>
+                <div className="agent-chat-identity">
                   <h2>
                     {active.brand_name ||
                       active.contact_name ||
@@ -246,7 +348,7 @@ export default function AgentInbox({
                     {active.stage}
                   </p>
                 </div>
-                <div>
+                <div className="agent-header-actions">
                   {active.status === "active" ? (
                     <button
                       className="btn outline small"
@@ -295,9 +397,26 @@ export default function AgentInbox({
                       </button>
                     </>
                   )}
+                  {isAdmin && isTestInquiry && (
+                    <button
+                      className="btn danger-outline small"
+                      onClick={() => setDeleteOpen(true)}
+                      disabled={busy}
+                    >
+                      <Trash2 size={15} />
+                      Delete test
+                    </button>
+                  )}
                 </div>
               </header>
-              <div className="agent-messages">
+              <details className="agent-details-mobile">
+                <summary>
+                  <span>Lead snapshot</span>
+                  <small>{active.stage}</small>
+                </summary>
+                <LeadSnapshot active={active} creatorName={activeCreator} />
+              </details>
+              <div className="agent-messages" ref={messageList}>
                 {messages.map((m) => (
                   <div key={m.id} className={"agent-message " + m.direction}>
                     <small>
@@ -327,7 +446,6 @@ export default function AgentInbox({
                       )}
                   </div>
                 ))}
-                <div ref={messageEnd} />
               </div>
               {actions
                 .filter((a) => a.status === "pending")
@@ -401,64 +519,53 @@ export default function AgentInbox({
         </section>
         <aside className="agent-details">
           <h3>Lead snapshot</h3>
-          {active ? (
-            <>
-              <label>
-                Creator<strong>{String(creator(active.influencer_id))}</strong>
-              </label>
-              <label>
-                Lead record<strong>{active.lead_id || "Creating…"}</strong>
-              </label>
-              <label>
-                Channel<strong>{active.channel}</strong>
-              </label>
-              <label>
-                Agent status<strong>{active.status}</strong>
-              </label>
-              <label>
-                Deal stage<strong>{active.stage}</strong>
-              </label>
-              <label>
-                Email<strong>{active.email || "Not collected"}</strong>
-              </label>
-              <label>
-                Phone<strong>{active.phone || "Not collected"}</strong>
-              </label>
-              <label>
-                Social links
-                <strong>
-                  {(() => {
-                    try {
-                      return (
-                        (
-                          JSON.parse(active.social_links || "[]") as string[]
-                        ).join(", ") || "Not collected"
-                      );
-                    } catch {
-                      return "Not collected";
-                    }
-                  })()}
-                </strong>
-              </label>
-              <label>
-                Requirement
-                <p>{active.requirement || "Not collected"}</p>
-              </label>
-              <label>
-                Budget<strong>{active.budget || "Not collected"}</strong>
-              </label>
-              <label>
-                Summary
-                <p>
-                  {active.summary || "The agent is still collecting details."}
-                </p>
-              </label>
-            </>
-          ) : (
-            <p>No conversation selected.</p>
-          )}
+          <LeadSnapshot active={active} creatorName={activeCreator} />
         </aside>
       </div>
+      {deleteOpen && active && (
+        <div
+          className="agent-delete-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setDeleteOpen(false);
+          }}
+        >
+          <section
+            className="agent-delete-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-test-title"
+            aria-describedby="delete-test-description"
+          >
+            <span className="delete-warning-icon">
+              <Trash2 size={21} />
+            </span>
+            <h3 id="delete-test-title">Delete test inquiry?</h3>
+            <p id="delete-test-description">
+              This permanently removes the demo conversation, its messages,
+              approvals and generated test lead. Real client inquiries are not
+              affected.
+            </p>
+            <div className="delete-confirm-actions">
+              <button
+                ref={deleteCancel}
+                className="btn outline"
+                onClick={() => setDeleteOpen(false)}
+                disabled={busy}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn danger"
+                onClick={() => void removeTestInquiry()}
+                disabled={busy}
+              >
+                <Trash2 size={15} />
+                {busy ? "Deleting…" : "Delete test inquiry"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ export const dynamic = "force-dynamic";
 type Conversation = {
   id: string;
   channel: string;
+  external_thread_id: string;
   external_user_id: string;
   influencer_id: string | null;
   lead_id: string | null;
@@ -136,6 +137,7 @@ export async function POST(request: Request) {
           "approve",
           "reject",
           "simulate",
+          "delete",
         ]),
         text: z.string().max(4000).optional(),
         actionId: z.string().uuid().optional(),
@@ -176,6 +178,51 @@ export async function POST(request: Request) {
     }
     const conversationId = z.string().uuid().parse(body.conversationId);
     const c = await access(conversationId, user);
+    if (body.action === "delete") {
+      if (!admin(user)) fail("Only an admin can delete test inquiries.", 403);
+      if (!c.external_thread_id.startsWith("demo-"))
+        fail("Only test inquiries can be deleted from Agent Inbox.", 403);
+      const fileIds = await db().transaction(async (tx) => {
+        const files = c.lead_id
+          ? (
+              await tx
+                .prepare("SELECT id FROM files WHERE record_id=?")
+                .bind(c.lead_id)
+                .all<{ id: string }>()
+            ).results
+          : [];
+        await tx
+          .prepare("DELETE FROM agent_actions WHERE conversation_id=?")
+          .bind(c.id)
+          .run();
+        await tx
+          .prepare("DELETE FROM agent_messages WHERE conversation_id=?")
+          .bind(c.id)
+          .run();
+        await tx
+          .prepare("DELETE FROM agent_conversations WHERE id=?")
+          .bind(c.id)
+          .run();
+        if (c.lead_id) {
+          await tx
+            .prepare("DELETE FROM files WHERE record_id=?")
+            .bind(c.lead_id)
+            .run();
+          await tx
+            .prepare("DELETE FROM versions WHERE record_id=?")
+            .bind(c.lead_id)
+            .run();
+          await tx
+            .prepare("DELETE FROM records WHERE id=? AND kind='lead'")
+            .bind(c.lead_id)
+            .run();
+        }
+        return files.map((file) => file.id);
+      });
+      await Promise.allSettled(fileIds.map((fileId) => bucket().delete(fileId)));
+      await auditAction(user, "Deleted agent demo inquiry");
+      return ok({ success: true });
+    }
     if (
       ["pause", "resume", "handoff", "close", "confirm"].includes(body.action)
     ) {

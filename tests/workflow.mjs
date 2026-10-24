@@ -24,8 +24,10 @@ const [
 
 assert.match(dashboard, /<AgentInbox/);
 assert.match(inbox, /Create test inquiry/);
-for (const action of ["send-draft", "confirm", "simulate"])
+assert.match(inbox, /Delete test inquiry/);
+for (const action of ["send-draft", "confirm", "simulate", "delete"])
   assert.match(agentApi, new RegExp(`"${action}"`));
+assert.match(agentApi, /Only test inquiries can be deleted/);
 assert.match(webhook, /processInbound\(message\)/);
 assert.match(agent, /channelOptionsFor\(c\.channel, c\.influencer_id\)/);
 assert.match(agent, /kitFileId/);
