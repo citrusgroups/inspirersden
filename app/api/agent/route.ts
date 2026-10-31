@@ -10,6 +10,7 @@ import {
   id,
   now,
   getRecord,
+  getSettings,
   auditAction,
   config,
   bucket,
@@ -26,6 +27,7 @@ type Conversation = {
   external_user_id: string;
   influencer_id: string | null;
   lead_id: string | null;
+  brand_name?: string | null;
   status: string;
   stage: string;
 };
@@ -54,6 +56,40 @@ async function updateLead(
     .prepare("UPDATE records SET data=?,updated=?,version=version+1 WHERE id=?")
     .bind(JSON.stringify({ ...lead.data, ...patch }), now(), lead.id)
     .run();
+}
+async function scheduleFollowUp(c: Conversation, reason: string) {
+  if (c.status === "closed") return;
+  const settings = await getSettings();
+  const configuredHours = Number(settings.followupHours || 48);
+  const hours = Number.isFinite(configuredHours)
+    ? Math.min(336, Math.max(1, configuredHours))
+    : 48;
+  const dueAt = new Date(Date.now() + hours * 3_600_000).toISOString();
+  const payload = JSON.stringify({ dueAt, reason });
+  const existing = await db()
+    .prepare(
+      "SELECT id FROM agent_actions WHERE conversation_id=? AND action_type='follow_up' AND status='pending' ORDER BY requested DESC LIMIT 1",
+    )
+    .bind(c.id)
+    .first<{ id: string }>();
+  if (existing)
+    await db()
+      .prepare(
+        "UPDATE agent_actions SET payload=?,requested=?,error=NULL WHERE id=?",
+      )
+      .bind(payload, now(), existing.id)
+      .run();
+  else
+    await db()
+      .prepare(
+        "INSERT INTO agent_actions (id,conversation_id,action_type,payload,status,requested) VALUES (?,?,?,?,?,?)",
+      )
+      .bind(id(), c.id, "follow_up", payload, "pending", now())
+      .run();
+  await updateLead(c.lead_id, {
+    followup: dueAt.slice(0, 10),
+    followupStatus: "Awaiting customer reply",
+  });
 }
 export async function GET(request: Request) {
   try {
@@ -138,6 +174,9 @@ export async function POST(request: Request) {
           "reject",
           "simulate",
           "delete",
+          "send-follow-up",
+          "snooze-follow-up",
+          "complete-follow-up",
         ]),
         text: z.string().max(4000).optional(),
         actionId: z.string().uuid().optional(),
@@ -247,7 +286,7 @@ export async function POST(request: Request) {
         .bind(status, stage, now(), c.id)
         .run();
       if (body.action === "confirm")
-        await updateLead(c.lead_id, { status: "Confirmed" });
+        await updateLead(c.lead_id, { status: "Converted" });
       if (body.action === "close")
         await updateLead(c.lead_id, { status: "Closed" });
       await auditAction(
@@ -289,6 +328,7 @@ export async function POST(request: Request) {
         )
         .bind(now(), now(), c.id)
         .run();
+      await scheduleFollowUp(c, "Awaiting customer reply");
       return ok({ success: true });
     }
     if (body.action === "send-draft") {
@@ -319,7 +359,9 @@ export async function POST(request: Request) {
             409,
           );
       }
-      let outboundContent = draft.content;
+      let outboundContent = body.text
+        ? z.string().trim().min(1).max(4000).parse(body.text)
+        : draft.content;
       if (mediaKitFileId) {
         const url = await bucket().signedUrl(mediaKitFileId, 3600);
         outboundContent = outboundContent.replace(
@@ -353,9 +395,103 @@ export async function POST(request: Request) {
           .bind(linkedActionId, c.id)
           .run();
         await updateLead(c.lead_id, {
+          status: "Proposal / Package Sent",
           packageSent: new Date().toISOString().slice(0, 10),
         });
       }
+      await scheduleFollowUp(
+        c,
+        linkedActionId ? "Package sent" : "Awaiting customer reply",
+      );
+      return ok({ success: true });
+    }
+    if (
+      ["send-follow-up", "snooze-follow-up", "complete-follow-up"].includes(
+        body.action,
+      )
+    ) {
+      if (!staff(user)) fail("Follow-ups require agency staff access.", 403);
+      const actionId = z.string().uuid().parse(body.actionId);
+      const action = await db()
+        .prepare(
+          "SELECT id,payload FROM agent_actions WHERE id=? AND conversation_id=? AND action_type='follow_up' AND status='pending'",
+        )
+        .bind(actionId, c.id)
+        .first<{ id: string; payload: string }>();
+      if (!action) fail("Pending follow-up not found.", 404);
+      if (body.action === "snooze-follow-up") {
+        const current = JSON.parse(action.payload || "{}") as {
+          reason?: string;
+        };
+        const dueAt = new Date(Date.now() + 24 * 3_600_000).toISOString();
+        await db()
+          .prepare("UPDATE agent_actions SET payload=?,requested=? WHERE id=?")
+          .bind(
+            JSON.stringify({
+              dueAt,
+              reason: current.reason || "Awaiting customer reply",
+            }),
+            now(),
+            action.id,
+          )
+          .run();
+        await updateLead(c.lead_id, {
+          followup: dueAt.slice(0, 10),
+          followupStatus: "Snoozed",
+        });
+        return ok({ success: true });
+      }
+      if (body.action === "complete-follow-up") {
+        await db()
+          .prepare(
+            "UPDATE agent_actions SET status='completed',decided=?,decided_by=? WHERE id=?",
+          )
+          .bind(now(), user.email, action.id)
+          .run();
+        await updateLead(c.lead_id, { followupStatus: "Completed" });
+        return ok({ success: true });
+      }
+      const followUpText =
+        body.text?.trim() ||
+        `Hello${c.brand_name ? ` ${c.brand_name}` : ""}, just following up on your collaboration inquiry. Please let us know if you would like us to help with the next step.`;
+      const providerId = await sendChannelMessage(
+        c.channel,
+        c.external_user_id,
+        followUpText,
+        await channelOptionsFor(c.channel, c.influencer_id),
+      );
+      await db().batch([
+        db()
+          .prepare(
+            "INSERT INTO agent_messages (id,conversation_id,provider_message_id,direction,role,content,metadata,status,created) VALUES (?,?,?,?,?,?,?,?,?)",
+          )
+          .bind(
+            id(),
+            c.id,
+            providerId || null,
+            "outbound",
+            "human",
+            followUpText,
+            JSON.stringify({ followUpActionId: action.id }),
+            "sent",
+            now(),
+          ),
+        db()
+          .prepare(
+            "UPDATE agent_actions SET status='completed',decided=?,decided_by=? WHERE id=?",
+          )
+          .bind(now(), user.email, action.id),
+        db()
+          .prepare(
+            "UPDATE agent_conversations SET stage='follow_up',last_message_at=?,updated=? WHERE id=?",
+          )
+          .bind(now(), now(), c.id),
+      ]);
+      await updateLead(c.lead_id, {
+        status: "Follow-up",
+        followupStatus: "Completed",
+      });
+      await auditAction(user, "Sent inquiry follow-up", c.lead_id || undefined);
       return ok({ success: true });
     }
     if (!admin(user)) fail("Package approval requires an admin.", 403);
@@ -418,7 +554,7 @@ export async function POST(request: Request) {
           .bind(now(), c.id),
       ]);
       await updateLead(c.lead_id, {
-        status: "Package Suggested",
+        status: deliverNow ? "Proposal / Package Sent" : "Awaiting Approval",
         packageId: pkg.id,
         packageName: String(pkg.data.name || ""),
         ...(deliverNow
@@ -430,6 +566,7 @@ export async function POST(request: Request) {
         `${deliverNow ? "Sent" : "Approved"} package: ${pkg.data.name}`,
         c.lead_id || undefined,
       );
+      if (deliverNow) await scheduleFollowUp(c, "Package sent");
       return ok({ success: true, delivered: deliverNow });
     } catch (error) {
       await db()

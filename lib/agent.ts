@@ -38,6 +38,16 @@ const decisionSchema = z.object({
   phone: z.string().max(50),
   socialLinks: z.array(z.string().max(500)).max(8),
   requirement: z.string().max(1500),
+  campaignType: z.string().max(160),
+  productService: z.string().max(300),
+  deliverables: z.string().max(600),
+  reels: z.number().int().min(0).max(100),
+  stories: z.number().int().min(0).max(100),
+  posts: z.number().int().min(0).max(100),
+  campaignDate: z.string().max(100),
+  campaignDuration: z.string().max(160),
+  location: z.string().max(200),
+  specialRequirements: z.string().max(800),
   budget: z.string().max(120),
   shouldShareMediaKit: z.boolean(),
   packageId: z.string().max(100),
@@ -56,6 +66,16 @@ type Conversation = {
   phone: string | null;
   social_links: string;
   requirement: string | null;
+  campaign_type: string | null;
+  product_service: string | null;
+  deliverables: string | null;
+  reels: number;
+  stories: number;
+  posts: number;
+  campaign_date: string | null;
+  campaign_duration: string | null;
+  location: string | null;
+  special_requirements: string | null;
   budget: string | null;
   summary: string | null;
   status: string;
@@ -86,18 +106,32 @@ function fallback(
     ? existingSocial
     : intake.socialLinks;
   const requirement = c.requirement || (latest.length >= 12 ? latest : "");
+  const campaignType = c.campaign_type || intake.campaignType;
+  const deliverables = c.deliverables || intake.deliverables;
+  const productService = c.product_service || "";
+  const campaignDate = c.campaign_date || "";
+  const campaignDuration = c.campaign_duration || "";
+  const location = c.location || "";
   const budget = c.budget || intake.budget;
-  const missing = !brandName
-    ? "brand name"
-    : !requirement
-      ? "campaign requirement"
-      : !email && !phone
-        ? "email or phone number"
-        : !socialLinks.length
-          ? "brand social profile link"
-          : !budget
-            ? "estimated budget"
-            : "";
+  const missing =
+    (
+      [
+        [!brandName, "brand name"],
+        [!requirement, "campaign requirement"],
+        [!campaignType, "campaign type"],
+        [!productService, "product or service being promoted"],
+        [
+          !deliverables,
+          "required deliverables (reels, stories, posts or event coverage)",
+        ],
+        [!campaignDate, "campaign date or expected timeline"],
+        [!campaignDuration, "campaign duration"],
+        [!location, "campaign location"],
+        [!email && !phone, "email or phone number"],
+        [!socialLinks.length, "brand social profile link"],
+        [!budget, "estimated budget"],
+      ] as [boolean, string][]
+    ).find(([needed]) => needed)?.[1] || "";
   const asksForPackage =
     /\b(?:price|pricing|package|rates?|charges?|cost|kit)\b/i.test(latest);
   const needsHuman =
@@ -138,6 +172,16 @@ function fallback(
     phone,
     socialLinks,
     requirement,
+    campaignType,
+    productService,
+    deliverables,
+    reels: c.reels || 0,
+    stories: c.stories || 0,
+    posts: c.posts || 0,
+    campaignDate,
+    campaignDuration,
+    location,
+    specialRequirements: c.special_requirements || "",
     budget,
     shouldShareMediaKit: /\bmedia\s*kit\b/i.test(latest),
     packageId,
@@ -166,14 +210,24 @@ async function decide(
     phone: c.phone || "",
     socialLinks: JSON.parse(c.social_links || "[]"),
     requirement: c.requirement || "",
+    campaignType: c.campaign_type || "",
+    productService: c.product_service || "",
+    deliverables: c.deliverables || "",
+    reels: c.reels || 0,
+    stories: c.stories || 0,
+    posts: c.posts || 0,
+    campaignDate: c.campaign_date || "",
+    campaignDuration: c.campaign_duration || "",
+    location: c.location || "",
+    specialRequirements: c.special_requirements || "",
     budget: c.budget || "",
   };
   try {
     const result = await generateText({
       model: config("AI_MODEL") || "openai/gpt-6-luna",
       output: Output.object({ schema: decisionSchema }),
-      system: `You are the PR inquiry assistant for ${settings.name || "Inspirers' Den"}. You represent ${influencer?.data?.name || "the agency"} (${influencer?.data?.niche || "creator"}). Voice: ${nicheVoice(String(influencer?.data?.niche || ""))}. Match the visitor's language; Roman Urdu is allowed. Be natural, concise, and professional: maximum three short sentences and one question at a time. Collect brand name, contact name, email/phone, social link, campaign requirement, timeline and budget. Never invent prices, metrics, availability, discounts or commitments. Only use supplied packages. A package recommendation requires human approval before sending. Set handoffRequired for negotiation, payment, contract/legal topics, complaints, risk, ambiguity, or a request for a human. Media kit may be shared only when a real kit URL is supplied. Preserve already collected fields.`,
-      prompt: `Current lead: ${JSON.stringify(current)}\nCreator media kit: ${String(influencer?.data?.kit || "")}\nAvailable packages: ${JSON.stringify(packages.map((p) => ({ id: p.id, name: p.data.name, price: p.data.price, currency: p.data.currency, deliverables: p.data.deliverables })))}\nConversation:\n${history.map((m) => `${m.role}: ${m.content}`).join("\n")}`,
+      system: `You are the PR inquiry assistant for ${settings.name || "Inspirers' Den"}. You represent ${influencer?.data?.name || "the agency"} (${influencer?.data?.niche || "creator"}). Default voice: ${nicheVoice(String(influencer?.data?.niche || ""))}. Influencer communication style: ${String(influencer?.data?.communicationStyle || "use the default voice")}. Influencer AI context: ${String(influencer?.data?.aiContext || "none supplied")}. Match the visitor's language; Roman Urdu is allowed. Be natural, concise, and professional: maximum three short sentences and one question at a time. Collect brand name, contact name, email/phone, social link, campaign type, product/service, deliverables and quantities, campaign date, duration, location, special requirements and budget. Never invent prices, metrics, availability, discounts or commitments. Follow the supplied pricing rules and only use supplied packages. A package recommendation, special pricing, negotiation, large/custom campaign, sensitive topic or unusual requirement requires human approval before sending. Set handoffRequired for payment, contract/legal topics, complaints, risk, ambiguity, or a request for a human. Media kit may be shared only when a real kit URL is supplied. Preserve already collected fields.`,
+      prompt: `Current lead: ${JSON.stringify(current)}\nAvailable services: ${String(influencer?.data?.services || influencer?.data?.deliverables || "")}\nPricing rules: ${String(influencer?.data?.pricingRules || "No discounts or custom commitments without approval.")}\nCreator media kit: ${String(influencer?.data?.kit || "")}\nAvailable packages: ${JSON.stringify(packages.map((p) => ({ id: p.id, name: p.data.name, price: p.data.price, currency: p.data.currency, deliverables: p.data.deliverables })))}\nConversation:\n${history.map((m) => `${m.role}: ${m.content}`).join("\n")}`,
     });
     return result.output;
   } catch (error) {
@@ -224,10 +278,16 @@ async function upsertLead(
 ) {
   const existing = c.lead_id ? await getRecord(c.lead_id) : null;
   const current = existing?.kind === "lead" ? existing.data : {};
-  const currentStatus = String(current.status || "New");
-  const aiManagedStatus = ["", "New", "Contacted", "Qualified"].includes(
-    currentStatus,
-  );
+  const currentStatus = String(current.status || "New Inquiry");
+  const aiManagedStatus = [
+    "",
+    "New",
+    "New Inquiry",
+    "Contacted",
+    "AI Responded",
+    "Information Requested",
+    "Qualified",
+  ].includes(currentStatus);
   const data = {
     ...current,
     name:
@@ -239,6 +299,23 @@ async function upsertLead(
     phone: decision.phone || String(current.phone || ""),
     social: decision.socialLinks[0] || String(current.social || ""),
     requirement: decision.requirement || String(current.requirement || ""),
+    campaignType:
+      decision.campaignType || String(current.campaignType || "Other"),
+    productService:
+      decision.productService || String(current.productService || ""),
+    deliverables:
+      decision.deliverables || String(current.deliverables || ""),
+    reels: decision.reels || Number(current.reels || 0),
+    stories: decision.stories || Number(current.stories || 0),
+    posts: decision.posts || Number(current.posts || 0),
+    campaignDate:
+      decision.campaignDate || String(current.campaignDate || ""),
+    campaignDuration:
+      decision.campaignDuration || String(current.campaignDuration || ""),
+    location: decision.location || String(current.location || ""),
+    specialRequirements:
+      decision.specialRequirements ||
+      String(current.specialRequirements || ""),
     budget: decision.budget || String(current.budget || ""),
     currency: String(current.currency || "PKR"),
     influencerId: influencerId || String(current.influencerId || ""),
@@ -247,9 +324,13 @@ async function upsertLead(
     reference: influencerId || String(current.reference || ""),
     assigned: String(current.assigned || ""),
     status: aiManagedStatus
-      ? decision.stage === "qualified" || decision.stage === "package_review"
-        ? "Qualified"
-        : currentStatus || "New"
+      ? decision.stage === "package_review"
+        ? "Awaiting Approval"
+        : decision.stage === "qualified"
+          ? "Qualified"
+          : decision.stage === "collecting"
+            ? "Information Requested"
+            : "AI Responded"
       : currentStatus,
     notes: String(current.notes || "Managed by AI agent"),
   };
@@ -270,6 +351,49 @@ async function upsertLead(
       .run();
     c.lead_id = leadId;
   }
+}
+
+async function scheduleAgentFollowUp(c: Conversation, reason: string) {
+  const settings = await getSettings();
+  const configuredHours = Number(settings.followupHours || 48);
+  const hours = Number.isFinite(configuredHours)
+    ? Math.min(336, Math.max(1, configuredHours))
+    : 48;
+  const dueAt = new Date(Date.now() + hours * 3_600_000).toISOString();
+  const existing = await db()
+    .prepare(
+      "SELECT id FROM agent_actions WHERE conversation_id=? AND action_type='follow_up' AND status='pending' ORDER BY requested DESC LIMIT 1",
+    )
+    .bind(c.id)
+    .first<{ id: string }>();
+  const payload = JSON.stringify({ dueAt, reason });
+  if (existing)
+    await db()
+      .prepare("UPDATE agent_actions SET payload=?,requested=? WHERE id=?")
+      .bind(payload, now(), existing.id)
+      .run();
+  else
+    await db()
+      .prepare(
+        "INSERT INTO agent_actions (id,conversation_id,action_type,payload,status,requested) VALUES (?,?,?,?,?,?)",
+      )
+      .bind(id(), c.id, "follow_up", payload, "pending", now())
+      .run();
+  if (!c.lead_id) return;
+  const lead = await getRecord(c.lead_id);
+  if (!lead || lead.kind !== "lead") return;
+  await db()
+    .prepare("UPDATE records SET data=?,updated=?,version=version+1 WHERE id=?")
+    .bind(
+      JSON.stringify({
+        ...lead.data,
+        followup: dueAt.slice(0, 10),
+        followupStatus: "Awaiting customer reply",
+      }),
+      now(),
+      lead.id,
+    )
+    .run();
 }
 
 export async function processInbound(
@@ -324,6 +448,16 @@ export async function processInbound(
       phone: null,
       social_links: "[]",
       requirement: null,
+      campaign_type: null,
+      product_service: null,
+      deliverables: null,
+      reels: 0,
+      stories: 0,
+      posts: 0,
+      campaign_date: null,
+      campaign_duration: null,
+      location: null,
+      special_requirements: null,
       budget: null,
       summary: null,
       status: "active",
@@ -334,7 +468,7 @@ export async function processInbound(
     };
     await db()
       .prepare(
-        "INSERT INTO agent_conversations (id,channel,external_thread_id,external_user_id,influencer_id,lead_id,contact_name,brand_name,email,phone,social_links,requirement,budget,summary,status,stage,last_message_at,created,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO agent_conversations (id,channel,external_thread_id,external_user_id,influencer_id,lead_id,contact_name,brand_name,email,phone,social_links,requirement,campaign_type,product_service,deliverables,reels,stories,posts,campaign_date,campaign_duration,location,special_requirements,budget,summary,status,stage,last_message_at,created,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .bind(
         c.id,
@@ -349,6 +483,16 @@ export async function processInbound(
         c.phone,
         c.social_links,
         c.requirement,
+        c.campaign_type,
+        c.product_service,
+        c.deliverables,
+        c.reels,
+        c.stories,
+        c.posts,
+        c.campaign_date,
+        c.campaign_duration,
+        c.location,
+        c.special_requirements,
         c.budget,
         c.summary,
         c.status,
@@ -359,6 +503,12 @@ export async function processInbound(
       )
       .run();
   }
+  const pendingFollowUp = await db()
+    .prepare(
+      "SELECT id FROM agent_actions WHERE conversation_id=? AND action_type='follow_up' AND status='pending' LIMIT 1",
+    )
+    .bind(c.id)
+    .first<{ id: string }>();
   await db()
     .prepare(
       "INSERT INTO agent_messages (id,conversation_id,provider_message_id,direction,role,content,metadata,status,created) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -374,6 +524,12 @@ export async function processInbound(
       "received",
       now(),
     )
+    .run();
+  await db()
+    .prepare(
+      "UPDATE agent_actions SET status='completed',decided=? WHERE conversation_id=? AND action_type='follow_up' AND status='pending'",
+    )
+    .bind(now(), c.id)
     .run();
   if (c.status !== "active") return { paused: true, conversationId: c.id };
   const history = (
@@ -410,6 +566,17 @@ export async function processInbound(
       : JSON.parse(c.social_links || "[]"),
   );
   c.requirement = decision.requirement || c.requirement;
+  c.campaign_type = decision.campaignType || c.campaign_type;
+  c.product_service = decision.productService || c.product_service;
+  c.deliverables = decision.deliverables || c.deliverables;
+  c.reels = decision.reels || c.reels;
+  c.stories = decision.stories || c.stories;
+  c.posts = decision.posts || c.posts;
+  c.campaign_date = decision.campaignDate || c.campaign_date;
+  c.campaign_duration = decision.campaignDuration || c.campaign_duration;
+  c.location = decision.location || c.location;
+  c.special_requirements =
+    decision.specialRequirements || c.special_requirements;
   c.budget = decision.budget || c.budget;
   c.summary = decision.summary || c.summary;
   c.stage = decision.stage;
@@ -417,9 +584,26 @@ export async function processInbound(
   c.updated = now();
   c.last_message_at = c.updated;
   await upsertLead(c, decision, c.influencer_id);
+  if (pendingFollowUp && c.lead_id) {
+    const lead = await getRecord(c.lead_id);
+    if (lead?.kind === "lead")
+      await db()
+        .prepare(
+          "UPDATE records SET data=?,updated=?,version=version+1 WHERE id=?",
+        )
+        .bind(
+          JSON.stringify({
+            ...lead.data,
+            followupStatus: "Customer replied",
+          }),
+          now(),
+          lead.id,
+        )
+        .run();
+  }
   await db()
     .prepare(
-      "UPDATE agent_conversations SET influencer_id=?,lead_id=?,contact_name=?,brand_name=?,email=?,phone=?,social_links=?,requirement=?,budget=?,summary=?,status=?,stage=?,last_message_at=?,updated=? WHERE id=?",
+      "UPDATE agent_conversations SET influencer_id=?,lead_id=?,contact_name=?,brand_name=?,email=?,phone=?,social_links=?,requirement=?,campaign_type=?,product_service=?,deliverables=?,reels=?,stories=?,posts=?,campaign_date=?,campaign_duration=?,location=?,special_requirements=?,budget=?,summary=?,status=?,stage=?,last_message_at=?,updated=? WHERE id=?",
     )
     .bind(
       c.influencer_id,
@@ -430,6 +614,16 @@ export async function processInbound(
       c.phone,
       c.social_links,
       c.requirement,
+      c.campaign_type,
+      c.product_service,
+      c.deliverables,
+      c.reels,
+      c.stories,
+      c.posts,
+      c.campaign_date,
+      c.campaign_duration,
+      c.location,
+      c.special_requirements,
       c.budget,
       c.summary,
       c.status,
@@ -520,6 +714,7 @@ export async function processInbound(
         )
         .bind(providerId || null, outboundId)
         .run();
+      await scheduleAgentFollowUp(c, "Awaiting customer reply");
     } catch (error) {
       await db()
         .prepare(

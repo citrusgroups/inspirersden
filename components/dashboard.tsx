@@ -133,6 +133,10 @@ const date = (s: string) =>
       })
     : "—";
 const val = (e: Entry, k: string) => String(e.data[k] || "");
+const isNewLead = (e: Entry) =>
+  ["New", "New Inquiry"].includes(String(e.data.status || ""));
+const isConvertedLead = (e: Entry) =>
+  ["Confirmed", "Converted"].includes(String(e.data.status || ""));
 async function api<T = JsonObject>(path: string, data?: unknown): Promise<T> {
   const r = await fetch(
     "/api/" + path,
@@ -158,22 +162,34 @@ async function api<T = JsonObject>(path: string, data?: unknown): Promise<T> {
 }
 function Badge({ children }: { children: React.ReactNode }) {
   const str = String(children);
-  const cls = ["Active", "Confirmed", "Connected", "Paid", "Approved"].includes(
-    str,
-  )
+  const cls = [
+    "Active",
+    "Confirmed",
+    "Converted",
+    "Connected",
+    "Paid",
+    "Approved",
+  ].includes(str)
     ? "good"
     : [
           "Pending",
           "New",
+          "New Inquiry",
+          "AI Responded",
+          "Information Requested",
           "Planning",
           "Permission Required",
           "Negotiation",
           "Unpaid",
         ].includes(str)
       ? "pending"
-      : ["Inactive", "Lost", "Connection Error", "Connection Expired"].includes(
-            str,
-          )
+      : [
+            "Inactive",
+            "Lost",
+            "Not Interested",
+            "Connection Error",
+            "Connection Expired",
+          ].includes(str)
         ? "muted"
         : "neutral";
   return <span className={"badge " + cls}>{children}</span>;
@@ -351,6 +367,11 @@ export default function Dashboard() {
     [category, setCategory] = useState("All categories"),
     [platform, setPlatform] = useState("All platforms"),
     [location, setLocation] = useState(""),
+    [influencerFilter, setInfluencerFilter] = useState("All influencers"),
+    [campaignTypeFilter, setCampaignTypeFilter] = useState(
+      "All campaign types",
+    ),
+    [followupFilter, setFollowupFilter] = useState("All follow-ups"),
     [sort, setSort] = useState("updated"),
     [view, setView] = useState("table"),
     [page, setPage] = useState(1),
@@ -410,6 +431,9 @@ export default function Dashboard() {
       setCategory("All categories");
       setPlatform("All platforms");
       setLocation("");
+      setInfluencerFilter("All influencers");
+      setCampaignTypeFilter("All campaign types");
+      setFollowupFilter("All follow-ups");
       setView(
         section === "campaigns" || section === "packages" ? "cards" : "table",
       );
@@ -419,7 +443,20 @@ export default function Dashboard() {
   }, [section]);
   useEffect(() => {
     queueMicrotask(() => setPage(1));
-  }, [query, status, category, platform, location, sort, range, from, to]);
+  }, [
+    query,
+    status,
+    category,
+    platform,
+    location,
+    influencerFilter,
+    campaignTypeFilter,
+    followupFilter,
+    sort,
+    range,
+    from,
+    to,
+  ]);
   const inRange = useCallback(
     (s: string) => {
       if (range === "all") return true;
@@ -463,6 +500,13 @@ export default function Dashboard() {
         (status === "All statuses" || r.data.status === status) &&
         (category === "All categories" || r.data.niche === category) &&
         (platform === "All platforms" || r.data.platform === platform) &&
+        (influencerFilter === "All influencers" ||
+          r.data.influencerId === influencerFilter ||
+          r.data.reference === influencerFilter) &&
+        (campaignTypeFilter === "All campaign types" ||
+          r.data.campaignType === campaignTypeFilter) &&
+        (followupFilter === "All follow-ups" ||
+          r.data.followupStatus === followupFilter) &&
         (!location ||
           val(r, "location").toLowerCase().includes(location.toLowerCase())) &&
         (r.kind === "influencer" || r.kind === "package" || inRange(r.created)),
@@ -603,7 +647,7 @@ export default function Dashboard() {
         const l = leads.filter(
           (l) => l.data.influencerId === c.id || l.data.reference === c.id,
         );
-        const won = l.filter((l) => l.data.status === "Confirmed");
+        const won = l.filter(isConvertedLead);
         return {
           id: c.id,
           name: c.data.name,
@@ -683,7 +727,7 @@ export default function Dashboard() {
   const descriptions: Record<string, string> = {
     overview: "A clear view of your creators, collaborations and next steps.",
     influencers: "The voices that make your network.",
-    leads: "Every conversation, from first hello to confirmed collaboration.",
+    leads: "Every conversation, from first hello to converted collaboration.",
     "agent-inbox": "Review AI conversations, approvals and human handoffs.",
     social: "Manage agency and creator account access securely.",
     packages: "Clear deliverables. Consistent offers.",
@@ -1005,10 +1049,9 @@ export default function Dashboard() {
                     <Icon size={18} />
                     <span>{name}</span>
                     {slug === "leads" &&
-                      leads.filter((l) => l.data.status === "New").length >
-                        0 && (
+                      leads.filter(isNewLead).length > 0 && (
                         <small>
-                          {leads.filter((l) => l.data.status === "New").length}
+                          {leads.filter(isNewLead).length}
                         </small>
                       )}
                   </Link>
@@ -1084,23 +1127,60 @@ export default function Dashboard() {
               >
                 <Bell size={19} />
                 {state.settings.notifications &&
-                  leads.some((l) => l.data.status === "New") && <i />}
+                  (leads.some(isNewLead) ||
+                    state.agentAlerts.pendingApprovals > 0 ||
+                    state.agentAlerts.dueFollowUps > 0 ||
+                    state.agentAlerts.handoffs > 0) && <i />}
               </button>
               {notification && (
                 <div className="dropdown">
                   <b>Notifications</b>
                   {!state.settings.notifications ? (
                     <p>Workspace notifications are disabled in Settings.</p>
-                  ) : leads.filter((l) => l.data.status === "New").length ? (
-                    <Link
-                      href="/dashboard/leads"
-                      onClick={() => setNotification(false)}
-                    >
-                      {leads.filter((l) => l.data.status === "New").length} new
-                      inquiries to review
-                    </Link>
                   ) : (
-                    <p>You’re all caught up.</p>
+                    <>
+                      {leads.filter(isNewLead).length > 0 && (
+                        <Link
+                          href="/dashboard/leads"
+                          onClick={() => setNotification(false)}
+                        >
+                          {leads.filter(isNewLead).length} new inquiries to
+                          review
+                        </Link>
+                      )}
+                      {state.agentAlerts.pendingApprovals > 0 && (
+                        <Link
+                          href="/dashboard/agent-inbox"
+                          onClick={() => setNotification(false)}
+                        >
+                          {state.agentAlerts.pendingApprovals} package approvals
+                          waiting
+                        </Link>
+                      )}
+                      {state.agentAlerts.dueFollowUps > 0 && (
+                        <Link
+                          href="/dashboard/agent-inbox"
+                          onClick={() => setNotification(false)}
+                        >
+                          {state.agentAlerts.dueFollowUps} follow-ups due
+                        </Link>
+                      )}
+                      {state.agentAlerts.handoffs > 0 && (
+                        <Link
+                          href="/dashboard/agent-inbox"
+                          onClick={() => setNotification(false)}
+                        >
+                          {state.agentAlerts.handoffs} conversations need human
+                          review
+                        </Link>
+                      )}
+                      {!leads.some(isNewLead) &&
+                        !state.agentAlerts.pendingApprovals &&
+                        !state.agentAlerts.dueFollowUps &&
+                        !state.agentAlerts.handoffs && (
+                          <p>You’re all caught up.</p>
+                        )}
+                    </>
                   )}
                   <Link
                     href="/dashboard/activity"
@@ -1237,7 +1317,7 @@ export default function Dashboard() {
                   [
                     Inbox,
                     "New inquiries",
-                    leads.filter((l) => l.data.status === "New").length,
+                    leads.filter(isNewLead).length,
                     "Ready for a conversation",
                     "leads",
                   ],
@@ -1326,10 +1406,9 @@ export default function Dashboard() {
                     <span>inquiries in selected period</span>
                     <Badge>
                       {
-                        leads.filter((l) => l.data.status === "Confirmed")
-                          .length
+                        leads.filter(isConvertedLead).length
                       }{" "}
-                      confirmed
+                      converted
                     </Badge>
                   </div>
                   <div className="stage-bars">
@@ -1367,7 +1446,13 @@ export default function Dashboard() {
                           leads.filter(
                             (l) =>
                               l.data.followup &&
-                              !["Confirmed", "Closed", "Lost"].includes(
+                              ![
+                                "Confirmed",
+                                "Converted",
+                                "Closed",
+                                "Lost",
+                                "Not Interested",
+                              ].includes(
                                 val(l, "status"),
                               ),
                           ).length
@@ -1432,6 +1517,50 @@ export default function Dashboard() {
                         <option key={s}>{s}</option>
                       ))}
                     </Choice>
+                  )}
+                  {section === "leads" && (
+                    <>
+                      <Choice
+                        aria-label="Influencer filter"
+                        value={influencerFilter}
+                        onChange={(e) => setInfluencerFilter(e.target.value)}
+                      >
+                        <option>All influencers</option>
+                        {creators.map((creator) => (
+                          <option key={creator.id} value={creator.id}>
+                            {val(creator, "name")}
+                          </option>
+                        ))}
+                      </Choice>
+                      <Choice
+                        aria-label="Campaign type filter"
+                        value={campaignTypeFilter}
+                        onChange={(e) => setCampaignTypeFilter(e.target.value)}
+                      >
+                        <option>All campaign types</option>
+                        {(
+                          definitions.lead.find(
+                            (field) => field.key === "campaignType",
+                          )?.options || []
+                        ).map((option) => (
+                          <option key={option}>{option}</option>
+                        ))}
+                      </Choice>
+                      <Choice
+                        aria-label="Follow-up status filter"
+                        value={followupFilter}
+                        onChange={(e) => setFollowupFilter(e.target.value)}
+                      >
+                        <option>All follow-ups</option>
+                        {(
+                          definitions.lead.find(
+                            (field) => field.key === "followupStatus",
+                          )?.options || []
+                        ).map((option) => (
+                          <option key={option}>{option}</option>
+                        ))}
+                      </Choice>
+                    </>
                   )}
                   {["influencers", "packages"].includes(section) && (
                     <Choice
@@ -1867,15 +1996,14 @@ export default function Dashboard() {
                       .length,
                   ],
                   [
-                    "Confirmed leads",
-                    leads.filter((l) => l.data.status === "Confirmed").length,
+                    "Converted leads",
+                    leads.filter(isConvertedLead).length,
                   ],
                   [
                     "Lead conversion",
                     leads.length
                       ? Math.round(
-                          (leads.filter((l) => l.data.status === "Confirmed")
-                            .length /
+                          (leads.filter(isConvertedLead).length /
                             leads.length) *
                             100,
                         ) + "%"
@@ -1892,7 +2020,7 @@ export default function Dashboard() {
               <section className="panel">
                 <div className="panel-heading">
                   <h2>Performance by creator</h2>
-                  <span>Conversions use confirmed leads</span>
+                  <span>Conversions use converted leads</span>
                 </div>
                 <div className="table-scroll">
                   <Table>
@@ -1913,9 +2041,7 @@ export default function Dashboard() {
                             l.data.influencerId === c.id ||
                             l.data.reference === c.id,
                         );
-                        const wins = ls.filter(
-                          (l) => l.data.status === "Confirmed",
-                        ).length;
+                        const wins = ls.filter(isConvertedLead).length;
                         return (
                           <TableRow key={c.id}>
                             <TableCell>
@@ -2205,6 +2331,7 @@ export default function Dashboard() {
                   "Social integrations",
                   "Team permissions",
                   "Notifications",
+                  "Agent workflow",
                   "Email configuration",
                   "Account & security",
                   "Data export",
@@ -2220,9 +2347,12 @@ export default function Dashboard() {
               </TabsList>
               <section className="panel settings-panel">
                 <h2>{settingsTab}</h2>
-                {["Agency profile", "Branding", "Notifications"].includes(
-                  settingsTab,
-                ) ? (
+                {[
+                  "Agency profile",
+                  "Branding",
+                  "Notifications",
+                  "Agent workflow",
+                ].includes(settingsTab) ? (
                   <AgencySettings
                     state={state}
                     tab={settingsTab}
@@ -2565,7 +2695,7 @@ export default function Dashboard() {
                     state.records.filter(
                       (l) =>
                         l.kind === "lead" &&
-                        l.data.status === "Confirmed" &&
+                        isConvertedLead(l) &&
                         (l.data.influencerId === selected.id ||
                           l.data.reference === selected.id),
                     ).length,
@@ -3315,6 +3445,33 @@ function AgencySettings({
           />
           Show workspace inquiry notifications
         </label>
+      )}
+      {tab === "Agent workflow" && (
+        <div className="workflow-settings-grid">
+          <label>
+            Follow-up reminder delay (hours)
+            <input
+              type="number"
+              min={1}
+              max={336}
+              value={Number(data.followupHours || 48)}
+              disabled={!canEdit}
+              onChange={(e) =>
+                setData({ ...data, followupHours: Number(e.target.value) })
+              }
+            />
+            <small>
+              A reminder is queued after an outbound reply or package is sent.
+            </small>
+          </label>
+          <div className="workflow-policy-note">
+            <strong>Human approval stays protected</strong>
+            <p>
+              Package replies, negotiations, discounts and custom pricing are
+              held for agency review before they can be sent.
+            </p>
+          </div>
+        </div>
       )}
       {canEdit && (
         <button className="btn gold" disabled={busy}>

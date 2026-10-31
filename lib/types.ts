@@ -62,6 +62,11 @@ export type State = {
   settings: Data;
   authConfigured: boolean;
   integrationReady: Record<string, boolean>;
+  agentAlerts: {
+    pendingApprovals: number;
+    dueFollowUps: number;
+    handoffs: number;
+  };
 };
 export const navigation = [
   "Overview",
@@ -96,22 +101,28 @@ export const slugs = [
   "settings",
 ];
 export const stages = [
-  "New",
-  "Contacted",
+  "New Inquiry",
+  "AI Responded",
+  "Information Requested",
   "Qualified",
-  "Package Suggested",
   "Negotiation",
-  "Confirmed",
+  "Awaiting Approval",
+  "Proposal / Package Sent",
+  "Follow-up",
+  "Converted",
   "Closed",
-  "Lost",
+  "Not Interested",
 ];
 export const categories = [
   "Fashion",
+  "Clothing",
   "Food",
   "Travel",
   "Lifestyle",
   "Recipes",
+  "Beauty",
   "Entertainment",
+  "Other",
 ];
 export const platforms = ["Instagram", "Facebook", "TikTok", "Gmail"];
 export type Field = {
@@ -151,6 +162,22 @@ export const definitions: Record<string, Field[]> = {
       options: ["PKR", "USD", "AED", "SAR"],
     },
     { key: "deliverables", label: "Deliverables", type: "textarea" },
+    { key: "services", label: "Available services", type: "textarea" },
+    {
+      key: "pricingRules",
+      label: "Pricing and negotiation rules",
+      type: "textarea",
+    },
+    {
+      key: "communicationStyle",
+      label: "Communication style",
+      type: "textarea",
+    },
+    {
+      key: "aiContext",
+      label: "AI context and instructions",
+      type: "textarea",
+    },
     { key: "bio", label: "Biography", type: "textarea" },
     { key: "tags", label: "Tags (comma separated)" },
     { key: "notes", label: "Internal notes", type: "textarea" },
@@ -162,7 +189,37 @@ export const definitions: Record<string, Field[]> = {
     { key: "email", label: "Email", type: "email" },
     { key: "phone", label: "Phone", type: "tel" },
     { key: "social", label: "Social profile URL", type: "url" },
+    {
+      key: "campaignType",
+      label: "Campaign type",
+      options: [
+        "Product promotion",
+        "Brand collaboration",
+        "Restaurant / food review",
+        "Travel / destination",
+        "Event coverage",
+        "Custom campaign",
+        "Other",
+      ],
+    },
+    { key: "productService", label: "Product or service" },
     { key: "requirement", label: "Campaign requirement", type: "textarea" },
+    {
+      key: "deliverables",
+      label: "Required deliverables",
+      type: "textarea",
+    },
+    { key: "reels", label: "Number of reels", type: "number" },
+    { key: "stories", label: "Number of stories", type: "number" },
+    { key: "posts", label: "Number of posts", type: "number" },
+    { key: "campaignDate", label: "Campaign date", type: "date" },
+    { key: "campaignDuration", label: "Campaign duration" },
+    { key: "location", label: "Campaign location" },
+    {
+      key: "specialRequirements",
+      label: "Special requirements",
+      type: "textarea",
+    },
     { key: "budget", label: "Budget", type: "number" },
     {
       key: "currency",
@@ -199,6 +256,18 @@ export const definitions: Record<string, Field[]> = {
     { key: "assigned", label: "Assigned manager email", type: "email" },
     { key: "status", label: "Stage", options: stages },
     { key: "followup", label: "Follow-up date", type: "date" },
+    {
+      key: "followupStatus",
+      label: "Follow-up status",
+      options: [
+        "Not scheduled",
+        "Awaiting customer reply",
+        "Due",
+        "Snoozed",
+        "Customer replied",
+        "Completed",
+      ],
+    },
     { key: "packageSent", label: "Package manually sent on", type: "date" },
     { key: "notes", label: "Notes", type: "textarea" },
   ],

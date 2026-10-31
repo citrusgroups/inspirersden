@@ -12,6 +12,9 @@ import {
   Archive,
   FlaskConical,
   Trash2,
+  Pencil,
+  Clock3,
+  TimerReset,
 } from "lucide-react";
 import { readJson } from "@/lib/json";
 
@@ -29,6 +32,16 @@ type Conversation = {
   phone: string | null;
   social_links: string;
   requirement: string | null;
+  campaign_type: string | null;
+  product_service: string | null;
+  deliverables: string | null;
+  reels: number;
+  stories: number;
+  posts: number;
+  campaign_date: string | null;
+  campaign_duration: string | null;
+  location: string | null;
+  special_requirements: string | null;
   budget: string | null;
   status: string;
   stage: string;
@@ -45,7 +58,7 @@ type Message = {
 type Action = {
   id: string;
   action_type: string;
-  payload: { packageId?: string };
+  payload: { packageId?: string; dueAt?: string; reason?: string };
   status: string;
   requested: string;
   error?: string;
@@ -103,6 +116,38 @@ function LeadSnapshot({
         Requirement<p>{active.requirement || "Not collected"}</p>
       </label>
       <label>
+        Campaign type<strong>{active.campaign_type || "Not collected"}</strong>
+      </label>
+      <label>
+        Product / service
+        <strong>{active.product_service || "Not collected"}</strong>
+      </label>
+      <label>
+        Deliverables<p>{active.deliverables || "Not collected"}</p>
+      </label>
+      <label>
+        Content quantities
+        <strong>
+          {active.reels || active.stories || active.posts
+            ? `${active.reels || 0} reels · ${active.stories || 0} stories · ${active.posts || 0} posts`
+            : "Not collected"}
+        </strong>
+      </label>
+      <label>
+        Campaign date<strong>{active.campaign_date || "Not collected"}</strong>
+      </label>
+      <label>
+        Duration
+        <strong>{active.campaign_duration || "Not collected"}</strong>
+      </label>
+      <label>
+        Location<strong>{active.location || "Not collected"}</strong>
+      </label>
+      <label>
+        Special requirements
+        <p>{active.special_requirements || "None collected"}</p>
+      </label>
+      <label>
         Budget<strong>{active.budget || "Not collected"}</strong>
       </label>
       <label>
@@ -147,6 +192,11 @@ export default function AgentInbox({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [deleteOpen, setDeleteOpen] = useState(false),
+    [conversationQuery, setConversationQuery] = useState(""),
+    [conversationStatus, setConversationStatus] = useState("All"),
+    [editingDraft, setEditingDraft] = useState(""),
+    [draftText, setDraftText] = useState(""),
+    [clock, setClock] = useState(0),
     [configuration, setConfiguration] = useState<Configuration>({
       ai: false,
       whatsapp: false,
@@ -191,7 +241,16 @@ export default function AgentInbox({
     return () => clearInterval(timer);
   }, [list]);
   useEffect(() => {
-    queueMicrotask(() => void detail(selected));
+    queueMicrotask(() => setClock(Date.now()));
+    const timer = setInterval(() => setClock(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void detail(selected);
+      setEditingDraft("");
+      setDraftText("");
+    });
     if (!selected) return;
     const timer = setInterval(() => void detail(selected), 7000);
     return () => clearInterval(timer);
@@ -217,6 +276,23 @@ export default function AgentInbox({
   const active = rows.find((r) => r.id === selected);
   const activeCreator = String(creator(active?.influencer_id || null));
   const isTestInquiry = Boolean(active?.external_thread_id?.startsWith("demo-"));
+  const visibleRows = rows.filter((conversation) => {
+    const query = conversationQuery.trim().toLowerCase();
+    const matchesQuery =
+      !query ||
+      [
+        conversation.brand_name,
+        conversation.contact_name,
+        conversation.external_user_id,
+        creator(conversation.influencer_id),
+        conversation.channel,
+      ].some((value) => String(value || "").toLowerCase().includes(query));
+    return (
+      matchesQuery &&
+      (conversationStatus === "All" ||
+        conversation.status === conversationStatus)
+    );
+  });
   async function act(action: string, extra: Record<string, string> = {}) {
     if (!selected) return;
     setBusy(true);
@@ -228,6 +304,8 @@ export default function AgentInbox({
         ...extra,
       });
       setText("");
+      setEditingDraft("");
+      setDraftText("");
       await Promise.all([list(), detail(selected)]);
     } catch (e) {
       setError((e as Error).message);
@@ -306,7 +384,26 @@ export default function AgentInbox({
             <b>Live conversations</b>
             <span>{rows.length}</span>
           </div>
-          {rows.map((c) => (
+          <div className="agent-list-filters">
+            <input
+              value={conversationQuery}
+              onChange={(event) => setConversationQuery(event.target.value)}
+              placeholder="Search brand or creator…"
+              aria-label="Search conversations"
+            />
+            <select
+              value={conversationStatus}
+              onChange={(event) => setConversationStatus(event.target.value)}
+              aria-label="Conversation status"
+            >
+              <option>All</option>
+              <option value="active">Active</option>
+              <option value="handoff">Human review</option>
+              <option value="pause">Paused</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          {visibleRows.map((c) => (
             <button
               key={c.id}
               className={selected === c.id ? "active" : ""}
@@ -326,10 +423,11 @@ export default function AgentInbox({
               </span>
             </button>
           ))}
-          {!rows.length && (
+          {!visibleRows.length && (
             <p>
-              No agent conversations yet. New WhatsApp and Instagram messages
-              will appear here.
+              {rows.length
+                ? "No conversations match these filters."
+                : "No agent conversations yet. New WhatsApp and Instagram messages will appear here."}
             </p>
           )}
         </aside>
@@ -426,29 +524,87 @@ export default function AgentInbox({
                           ? "AI Agent"
                           : "Client"}
                     </small>
-                    <p>{m.content}</p>
+                    {editingDraft === m.id ? (
+                      <textarea
+                        className="agent-draft-editor"
+                        value={draftText}
+                        onChange={(event) => setDraftText(event.target.value)}
+                        maxLength={4000}
+                        aria-label="Edit AI draft before sending"
+                      />
+                    ) : (
+                      <p>{m.content}</p>
+                    )}
                     <time>
                       {new Date(m.created).toLocaleString()} · {m.status}
                     </time>
                     {m.direction === "outbound" &&
                       m.role === "assistant" &&
                       ["draft", "failed"].includes(m.status) && (
-                        <button
-                          className="agent-send-draft"
-                          disabled={busy}
-                          onClick={() => act("send-draft", { messageId: m.id })}
-                        >
-                          <Send size={13} />
-                          {m.status === "failed"
-                            ? "Retry send"
-                            : "Approve & send"}
-                        </button>
+                        <div className="agent-draft-actions">
+                          {editingDraft === m.id ? (
+                            <>
+                              <button
+                                className="agent-send-draft"
+                                disabled={busy || !draftText.trim()}
+                                onClick={() =>
+                                  act("send-draft", {
+                                    messageId: m.id,
+                                    text: draftText,
+                                  })
+                                }
+                              >
+                                <Send size={13} />
+                                Save & send
+                              </button>
+                              <button
+                                className="agent-edit-draft"
+                                disabled={busy}
+                                onClick={() => {
+                                  setEditingDraft("");
+                                  setDraftText("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="agent-edit-draft"
+                                disabled={busy}
+                                onClick={() => {
+                                  setEditingDraft(m.id);
+                                  setDraftText(m.content);
+                                }}
+                              >
+                                <Pencil size={13} />
+                                Edit draft
+                              </button>
+                              <button
+                                className="agent-send-draft"
+                                disabled={busy}
+                                onClick={() =>
+                                  act("send-draft", { messageId: m.id })
+                                }
+                              >
+                                <Send size={13} />
+                                {m.status === "failed"
+                                  ? "Retry send"
+                                  : "Approve & send"}
+                              </button>
+                            </>
+                          )}
+                        </div>
                       )}
                   </div>
                 ))}
               </div>
               {actions
-                .filter((a) => a.status === "pending")
+                .filter(
+                  (a) =>
+                    a.status === "pending" && a.action_type === "send_package",
+                )
                 .map((a) => (
                   <div className="agent-approval" key={a.id}>
                     <div>
@@ -486,6 +642,89 @@ export default function AgentInbox({
                     )}
                   </div>
                 ))}
+              {actions
+                .filter(
+                  (a) =>
+                    a.status === "pending" && a.action_type === "follow_up",
+                )
+                .map((a) => {
+                  const due = a.payload.dueAt
+                    ? new Date(a.payload.dueAt)
+                    : null;
+                  const isDue = due ? due.getTime() <= clock : true;
+                  return (
+                    <div
+                      className={"agent-follow-up " + (isDue ? "due" : "")}
+                      key={a.id}
+                    >
+                      <Clock3 size={17} />
+                      <div>
+                        <b>{isDue ? "Follow-up due" : "Follow-up scheduled"}</b>
+                        <small>
+                          {a.payload.reason || "Awaiting customer reply"}
+                          {due ? ` · ${due.toLocaleString()}` : ""}
+                        </small>
+                      </div>
+                      {isStaff && (
+                        <div className="agent-follow-up-actions">
+                          <button
+                            className="btn gold small"
+                            disabled={busy}
+                            onClick={() =>
+                              act("send-follow-up", { actionId: a.id })
+                            }
+                          >
+                            <Send size={13} />
+                            Send follow-up
+                          </button>
+                          <button
+                            className="btn outline small"
+                            disabled={busy}
+                            onClick={() =>
+                              act("snooze-follow-up", { actionId: a.id })
+                            }
+                          >
+                            <TimerReset size={13} />
+                            Snooze 24h
+                          </button>
+                          <button
+                            className="icon-button"
+                            disabled={busy}
+                            onClick={() =>
+                              act("complete-follow-up", { actionId: a.id })
+                            }
+                            aria-label="Mark follow-up complete"
+                            title="Mark complete"
+                          >
+                            <Check size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              {actions.some((action) => action.status !== "pending") && (
+                <details className="agent-action-history">
+                  <summary>Approval & follow-up history</summary>
+                  <div>
+                    {actions
+                      .filter((action) => action.status !== "pending")
+                      .map((action) => (
+                        <span key={action.id}>
+                          <b>
+                            {action.action_type === "send_package"
+                              ? "Package approval"
+                              : "Follow-up"}
+                          </b>
+                          <small>
+                            {action.status} ·{" "}
+                            {new Date(action.requested).toLocaleString()}
+                          </small>
+                        </span>
+                      ))}
+                  </div>
+                </details>
+              )}
               <form
                 className="agent-composer"
                 onSubmit={(e) => {

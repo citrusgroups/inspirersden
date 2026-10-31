@@ -74,7 +74,9 @@ Run `npm run db:setup` again after updating an existing installation. This adds 
 
 Set `AI_GATEWAY_API_KEY` and `AI_MODEL`. Keep `AGENT_AUTO_REPLY=false` for initial testing: replies will be saved as drafts in **Dashboard → Agent Inbox**. Change it to `true` only after both provider send tests work. The agent matches the sender's language, uses the influencer's niche to set its voice, collects brand/contact/social/campaign/budget details and sends risky or negotiated conversations to a human.
 
-When draft mode is active, every AI reply shows **Approve & send** in Agent Inbox. Package suggestions require a separate Owner/Admin approval. After approval, the selected package is attached to the lead and its pipeline stage becomes **Package Suggested**. Staff can later mark the deal **Confirmed** or close it; the linked lead updates automatically. If the AI service is temporarily unavailable, a deterministic safe intake fallback continues collecting basic details instead of dropping the inquiry.
+When draft mode is active, every AI reply shows **Approve & send** in Agent Inbox. Package suggestions require a separate Owner/Admin approval. After sending, the selected package is attached to the lead and its pipeline stage becomes **Proposal / Package Sent**. Staff can later mark the deal **Converted** or close it; the linked lead updates automatically. If the AI service is temporarily unavailable, a deterministic safe intake fallback continues collecting basic details instead of dropping the inquiry.
+
+AI drafts can be edited before sending. The agent stores structured campaign type, product/service, deliverables and quantities, date, duration, location, special requirements and budget. Outbound replies create a configurable follow-up reminder; staff can send, snooze or complete it from Agent Inbox, and the approval/follow-up history remains attached to the conversation.
 
 For a presentation before Meta credentials are available, use **Agent Inbox → Create test inquiry**. It creates an internal demo conversation and lead but never sends a message to a real client.
 
@@ -124,7 +126,7 @@ Documentation: https://developers.google.com/identity/protocols/oauth2/web-serve
 
 - New influencer profiles require an email and automatically generate a secure portal invitation. Staff can regenerate invitations. Links are shared manually, not emailed automatically.
 - Creators without a recorded email must have an email added before a valid invitation can be created.
-- Conversion rate = confirmed leads / recorded leads for the selected creator or date range. Clicks are redirect events, not unique visitors; bots and repeat clicks can count.
+- Conversion rate = converted leads / recorded leads for the selected creator or date range. Clicks are redirect events, not unique visitors; bots and repeat clicks can count.
 - Calendar view is a date-sorted campaign agenda. A month-grid scheduler and recurring sync are not included.
 - Testimonials and agency campaign case studies remain editable content placeholders until approved material is supplied.
 - Package recommendations are never sent without an Agency Owner/Admin approval in Agent Inbox.

@@ -111,6 +111,16 @@ CREATE TABLE IF NOT EXISTS "agent_conversations" (
 	"phone" text,
 	"social_links" text DEFAULT '[]' NOT NULL,
 	"requirement" text,
+	"campaign_type" text,
+	"product_service" text,
+	"deliverables" text,
+	"reels" integer DEFAULT 0 NOT NULL,
+	"stories" integer DEFAULT 0 NOT NULL,
+	"posts" integer DEFAULT 0 NOT NULL,
+	"campaign_date" text,
+	"campaign_duration" text,
+	"location" text,
+	"special_requirements" text,
 	"budget" text,
 	"summary" text,
 	"status" text DEFAULT 'active' NOT NULL,
@@ -119,6 +129,17 @@ CREATE TABLE IF NOT EXISTS "agent_conversations" (
 	"created" text NOT NULL,
 	"updated" text NOT NULL
 );
+
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "campaign_type" text;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "product_service" text;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "deliverables" text;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "reels" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "stories" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "posts" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "campaign_date" text;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "campaign_duration" text;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "location" text;
+ALTER TABLE "agent_conversations" ADD COLUMN IF NOT EXISTS "special_requirements" text;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "agent_conversation_thread" ON "agent_conversations" ("channel","external_thread_id");
 CREATE INDEX IF NOT EXISTS "agent_conversation_influencer" ON "agent_conversations" ("influencer_id","last_message_at");

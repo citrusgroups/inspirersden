@@ -8,4 +8,6 @@ export function basicIntake(text?: string): {
   brand: string;
   budget: string;
   romanUrdu: boolean;
+  campaignType: string;
+  deliverables: string;
 };

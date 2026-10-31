@@ -25,12 +25,23 @@ const [
 assert.match(dashboard, /<AgentInbox/);
 assert.match(inbox, /Create test inquiry/);
 assert.match(inbox, /Delete test inquiry/);
-for (const action of ["send-draft", "confirm", "simulate", "delete"])
+for (const action of [
+  "send-draft",
+  "confirm",
+  "simulate",
+  "delete",
+  "send-follow-up",
+  "snooze-follow-up",
+])
   assert.match(agentApi, new RegExp(`"${action}"`));
 assert.match(agentApi, /Only test inquiries can be deleted/);
 assert.match(webhook, /processInbound\(message\)/);
 assert.match(agent, /channelOptionsFor\(c\.channel, c\.influencer_id\)/);
 assert.match(agent, /kitFileId/);
+assert.match(agent, /communicationStyle/);
+assert.match(agent, /campaignType/);
+assert.match(inbox, /Edit draft/);
+assert.match(inbox, /Follow-up due/);
 assert.match(uploadApi, /purpose === "media-kit"/);
 assert.match(tracking, /Reference:.*entry\.id/s);
 for (const table of [

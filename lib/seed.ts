@@ -15,6 +15,10 @@ export const creators: Data[] = [
         bio: "Food reviews, culinary discoveries and engaging stories for a passionate food-loving audience.",
         deliverables:
             "Package deal. See supplied media kit for platform-specific deliverables.",
+        services: "Food reviews, product promotions, reels, stories and brand collaborations.",
+        pricingRules: "Use approved packages only. Escalate discounts and custom pricing to the agency.",
+        communicationStyle: "Warm, welcoming and conversational.",
+        aiContext: "Focus on food campaigns and collect the venue, product, deliverables, date and budget.",
         email: "",
         source:
             "Supplied Vicky Panda media kit. Audience and rates are kit snapshots; reconfirm before booking.",
@@ -33,6 +37,10 @@ export const creators: Data[] = [
         kit: "/brand/taim-kit.jpg",
         bio: "Food storyteller and content creator exploring the rich culinary traditions of Pakistan.",
         deliverables: "Reel: PKR 400,000 • Story: PKR 150,000 • Event: PKR 200,000",
+        services: "Food storytelling, reels, stories, restaurant reviews and event coverage.",
+        pricingRules: "Use supplied rates; custom combinations need agency approval.",
+        communicationStyle: "Warm, energetic and clear.",
+        aiContext: "Ask for restaurant/product details, location, campaign date and content quantities.",
         email: "",
         source:
             "Supplied Taim Alam media kit. Figures are a dated snapshot, not live social metrics.",
@@ -52,6 +60,10 @@ export const creators: Data[] = [
         bio: "Lifestyle creator offering reels, static posts, stories and event appearances.",
         deliverables:
             "1-minute reel: 350,000 • 5-image post: 150,000 • Story: 30,000 • 3-hour event: 70,000",
+        services: "Lifestyle reels, static posts, stories and event appearances.",
+        pricingRules: "Never discount or confirm availability without agency approval.",
+        communicationStyle: "Polished, friendly and concise.",
+        aiContext: "Qualify lifestyle collaboration scope, dates, location and deliverables.",
         email: "noman.jaffar@icloud.com",
         source:
             "Supplied media kit: 125K Instagram + 63K TikTok. Kit rates valid until 31 October 2026.",
@@ -71,6 +83,10 @@ export const creators: Data[] = [
         bio: "Visual storyteller creating cinematic photography, videography and brand stories across travel and adventure.",
         deliverables:
             "Reel: PKR 600,000 • Stories: PKR 100,000 • Carousel: PKR 300,000",
+        services: "Travel reels, stories, photography, destination campaigns and brand storytelling.",
+        pricingRules: "Travel expenses and custom trip scope require agency review.",
+        communicationStyle: "Energetic, practical and adventurous.",
+        aiContext: "Collect destination, travel dates, hosting arrangements, deliverables and usage rights.",
         email: "",
         source:
             "The archive filename says Asfand; the media kit itself identifies Ali E. Confirm agency representation before booking.",
@@ -90,6 +106,10 @@ export const creators: Data[] = [
         bio: "Entrepreneur, consultant and Urdu/Hindi content creator based in Saudi Arabia.",
         deliverables:
             "Basic: USD 2,000 • Standard: USD 3,500 • Premium: USD 3,200 • Gold: USD 5,000. Excluding VAT.",
+        services: "Urdu/Hindi brand content, consulting promotions and platform campaigns.",
+        pricingRules: "Rates exclude VAT. Custom scope and negotiation require agency approval.",
+        communicationStyle: "Professional, confident and personable.",
+        aiContext: "Collect campaign market, language, platforms, deliverables, timeline and budget.",
         email: "",
         source:
             "Supplied media kit. Platform counts total 12.78M; reach claims are not guarantees.",
@@ -141,5 +161,6 @@ export const defaultSettings: Data = {
     website: "",
     logo: "/brand/logo.png",
     notifications: true,
+    followupHours: 48,
     security: "Verified email required. Team invitations expire in 7 days.",
 };

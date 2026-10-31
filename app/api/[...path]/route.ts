@@ -296,7 +296,7 @@ async function handle(request: Request) {
               requirement: data.message,
               budgetRange: data.budget,
               type: data.type,
-              status: "New",
+              status: "New Inquiry",
               source: "Website",
               platform: "Website",
               assigned: "",
@@ -371,6 +371,42 @@ async function handle(request: Request) {
       ).results.filter(
         (r) => admin(user) || permitted.has(String(r.record_id)),
       );
+      const agentActions = staff(user)
+        ? (
+            await db()
+              .prepare(
+                "SELECT a.action_type,a.payload FROM agent_actions a JOIN agent_conversations c ON c.id=a.conversation_id WHERE a.status='pending'",
+              )
+              .all<{ action_type: string; payload: string }>()
+          ).results
+        : (
+            await db()
+              .prepare(
+                "SELECT a.action_type,a.payload FROM agent_actions a JOIN agent_conversations c ON c.id=a.conversation_id WHERE a.status='pending' AND c.influencer_id=?",
+              )
+              .bind(user.influencer_id)
+              .all<{ action_type: string; payload: string }>()
+          ).results;
+      const handoffs = staff(user)
+        ? await db()
+            .prepare(
+              "SELECT COUNT(*) AS total FROM agent_conversations WHERE status='handoff'",
+            )
+            .first<{ total: number }>()
+        : await db()
+            .prepare(
+              "SELECT COUNT(*) AS total FROM agent_conversations WHERE status='handoff' AND influencer_id=?",
+            )
+            .bind(user.influencer_id)
+            .first<{ total: number }>();
+      const dueFollowUps = agentActions.filter((action) => {
+        if (action.action_type !== "follow_up") return false;
+        try {
+          return String(JSON.parse(action.payload).dueAt || "") <= now();
+        } catch {
+          return true;
+        }
+      }).length;
       return ok({
         user,
         records,
@@ -392,6 +428,13 @@ async function handle(request: Request) {
             oauthReady(p),
           ]),
         ),
+        agentAlerts: {
+          pendingApprovals: agentActions.filter(
+            (action) => action.action_type === "send_package",
+          ).length,
+          dueFollowUps,
+          handoffs: Number(handoffs?.total || 0),
+        },
       });
     }
     if (action === "records") {
@@ -858,6 +901,7 @@ async function handle(request: Request) {
             .or(z.literal("")),
           logo: z.string().max(500),
           notifications: z.boolean(),
+          followupHours: z.coerce.number().int().min(1).max(336).default(48),
         })
         .parse((await request.json()) as JsonObject);
       await db()
